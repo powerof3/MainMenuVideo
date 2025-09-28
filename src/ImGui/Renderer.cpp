@@ -31,12 +31,12 @@ namespace ImGui::Renderer
 
 				auto& io = ImGui::GetIO();
 				io.IniFilename = nullptr;
-				
+
 				auto& style = ImGui::GetStyle();
 				style.WindowPadding = ImVec2();
 				style.WindowBorderSize = 0.0f;
 				style.ImageBorderSize = 0.0f;
-				style.Colors[ImGuiCol_WindowBg] = ImVec4();	
+				style.Colors[ImGuiCol_WindowBg] = ImVec4();
 
 				if (!ImGui_ImplWin32_Init(desc.OutputWindow)) {
 					logger::error("ImGui initialization failed (Win32)");

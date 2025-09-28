@@ -264,7 +264,7 @@ void ImGui::Texture::Update(ID3D11DeviceContext* context, const cv::Mat& mat) co
 void VideoPlayer::Update(ID3D11DeviceContext* context, float deltaTime)
 {
 	updateTimer.fetch_add(deltaTime, std::memory_order_relaxed);
-	
+
 	Locker lock(frameLock);
 	if (!videoFrame.empty()) {
 		texture->Update(context, videoFrame);

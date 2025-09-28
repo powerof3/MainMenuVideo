@@ -15,12 +15,12 @@
 #include <shlobj.h>
 #include <wrl/client.h>
 
-#include <mfidl.h>
-#include <mfapi.h>
-#include <mfreadwrite.h>
 #include <Mferror.h>
-#include <propvarutil.h>
 #include <audioclient.h>
+#include <mfapi.h>
+#include <mfidl.h>
+#include <mfreadwrite.h>
+#include <propvarutil.h>
 
 #include <ClibUtil/simpleINI.hpp>
 #include <ClibUtil/string.hpp>

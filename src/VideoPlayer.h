@@ -43,7 +43,7 @@ public:
 private:
 	void CreateVideoThread();
 	void CreateAudioThread();
-	
+
 	bool LoadAudio(const std::string& path);
 	void ResetAudio();
 
