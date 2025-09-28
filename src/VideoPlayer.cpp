@@ -1,0 +1,352 @@
+#include "VideoPlayer.h"
+
+ImGui::Texture::Texture(ID3D11Device* device, std::uint32_t a_width, std::uint32_t a_height, float a_scale) :
+	size(static_cast<float>(a_width), static_cast<float>(a_height)),
+	scale(a_scale)
+{
+	D3D11_TEXTURE2D_DESC desc{
+		.Width = a_width,
+		.Height = a_height,
+		.MipLevels = 1,
+		.ArraySize = 1,
+		.Format = DXGI_FORMAT_B8G8R8A8_UNORM,
+		.SampleDesc = { 1, 0 },
+		.Usage = D3D11_USAGE_DYNAMIC,
+		.BindFlags = D3D11_BIND_SHADER_RESOURCE,
+		.CPUAccessFlags = D3D11_CPU_ACCESS_WRITE,
+		.MiscFlags = 0
+	};
+
+	if (FAILED(device->CreateTexture2D(&desc, nullptr, &texture)) ||
+		FAILED(device->CreateShaderResourceView(texture.Get(), nullptr, &srView))) {
+		texture.Reset();
+		srView.Reset();
+		return;
+	}
+}
+
+// https://stackoverflow.com/a/54946067
+// convert video to use MF? later
+bool VideoPlayer::LoadAudio(const std::string& path)
+{
+	HRESULT hr = CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED | COINIT_DISABLE_OLE1DDE);
+	if (FAILED(hr)) {
+		return false;
+	}
+
+	hr = MFStartup(MF_VERSION);
+	if (FAILED(hr)) {
+		CoUninitialize();
+		return false;
+	}
+
+	hr = MFCreateSourceReaderFromURL(stl::utf8_to_utf16(path)->c_str(), nullptr, &audioReader);
+	if (SUCCEEDED(hr)) {  // Select only the audio stream
+		hr = audioReader->SetStreamSelection((DWORD)MF_SOURCE_READER_ALL_STREAMS, FALSE);
+		if (SUCCEEDED(hr)) {
+			hr = audioReader->SetStreamSelection((DWORD)MF_SOURCE_READER_FIRST_AUDIO_STREAM, TRUE);
+			if (SUCCEEDED(hr)) {
+				hr = MFCreateAudioRenderer(nullptr, &mediaSink);
+				if (SUCCEEDED(hr)) {
+					ComPtr<IMFStreamSink> streamSink;
+					hr = mediaSink->GetStreamSinkByIndex(0, &streamSink);
+					if (SUCCEEDED(hr)) {
+						ComPtr<IMFMediaTypeHandler> typeHandler;
+						hr = streamSink->GetMediaTypeHandler(&typeHandler);
+						if (SUCCEEDED(hr)) {
+							DWORD                dwCount = 0;
+							ComPtr<IMFMediaType> inputType;
+							hr = typeHandler->GetMediaTypeCount(&dwCount);
+							if (SUCCEEDED(hr)) {
+								bool mediaTypeSupported = false;
+								for (DWORD i = 0; i < dwCount; i++) {
+									inputType = nullptr;
+									typeHandler->GetMediaTypeByIndex(i, &inputType);
+									if (SUCCEEDED(typeHandler->IsMediaTypeSupported(inputType.Get(), NULL))) {
+										mediaTypeSupported = true;
+										break;
+									}
+								}
+								if (mediaTypeSupported) {
+									hr = audioReader->SetCurrentMediaType((DWORD)MF_SOURCE_READER_FIRST_AUDIO_STREAM, NULL, inputType.Get());
+									if (SUCCEEDED(hr)) {
+										hr = typeHandler->SetCurrentMediaType(inputType.Get());
+										if (SUCCEEDED(hr)) {
+											hr = MFCreateSinkWriterFromMediaSink(mediaSink.Get(), nullptr, &audioWriter);
+											if (SUCCEEDED(hr)) {
+												audioWriter->SetInputMediaType(0, inputType.Get(), nullptr);
+												return true;
+											}
+										}
+									}
+								}
+							}
+						}
+					}
+				}
+			}
+		}
+	}
+
+	ResetAudio();
+
+	return false;
+}
+
+void VideoPlayer::CreateVideoThread()
+{
+	if (!videoThread.joinable()) {
+		videoThread = std::jthread([this](std::stop_token st) {
+			auto  startTime = std::chrono::steady_clock::now();
+			auto  lastDebugTime = startTime;
+			float localTimer = 0.0f;
+
+			while (!st.stop_requested()) {
+				float dt = updateTimer.exchange(0.0f, std::memory_order_acq_rel);
+				localTimer += dt;
+
+				if (localTimer < frameDuration) {
+					auto sleepTime = frameDuration - localTimer;
+					if (sleepTime > 0.0f) {
+						std::this_thread::sleep_for(std::chrono::duration<float>(sleepTime));
+					}
+					continue;
+				}
+
+				localTimer -= frameDuration;
+
+				if (localTimer > 5.0f * frameDuration) {
+					localTimer = 0.0f;
+				}
+
+				if (cap.grab()) {
+					grabbedFrameCount++;
+					if (grabbedFrameCount >= frameCount) {
+						grabbedFrameCount = 0;
+						retrievedFrameCount = 0;
+						cap.set(cv::CAP_PROP_POS_FRAMES, 0);
+
+						startTime = std::chrono::steady_clock::now();
+						lastDebugTime = startTime;
+					}
+					cv::Mat frame;
+					if (cap.retrieve(frame) && !frame.empty()) {
+						Locker lock(frameLock);
+						videoFrame = std::move(frame);
+						retrievedFrameCount++;
+					}
+				}
+
+				auto now = std::chrono::steady_clock::now();
+				if (std::chrono::duration<float>(now - lastDebugTime).count() >= 0.1f) {
+					float totalElapsed = std::chrono::duration<float>(now - startTime).count();
+					elapsedTime = totalElapsed;
+					actualFPS = retrievedFrameCount / totalElapsed;
+					lastDebugTime = now;
+				}
+			}
+		});
+	}
+}
+
+void VideoPlayer::CreateAudioThread()
+{
+	if (audioLoaded && !audioThread.joinable()) {
+		audioThread = std::jthread([this](std::stop_token st) {
+			audioWriter->BeginWriting();
+			while (!st.stop_requested()) {
+				ComPtr<IMFSample> sample;
+				DWORD             streamFlags;
+				MFTIME            timestamp;
+
+				HRESULT hr = audioReader->ReadSample((DWORD)MF_SOURCE_READER_FIRST_AUDIO_STREAM, 0, nullptr, &streamFlags, &timestamp, &sample);
+				if (FAILED(hr)) {
+					break;
+				}
+
+				if (streamFlags & MF_SOURCE_READERF_ENDOFSTREAM) {
+					PROPVARIANT var;
+					InitPropVariantFromInt64(0, &var);
+					audioReader->SetCurrentPosition(GUID_NULL, var);
+					PropVariantClear(&var);
+					continue;
+				}
+
+				if (streamFlags & MF_SOURCE_READERF_STREAMTICK) {
+					audioWriter->SendStreamTick(0, timestamp);
+				}
+
+				if (sample) {
+					audioWriter->WriteSample(0, sample.Get());
+				}
+			}
+		});
+	}
+}
+
+bool VideoPlayer::LoadVideo(ID3D11Device* device, const std::string& path, bool playAudio)
+{
+	if (IsPlaying()) {
+		Reset();
+	}
+
+	static std::vector<std::int32_t> params{
+		cv::CAP_PROP_HW_ACCELERATION,
+		cv::VIDEO_ACCELERATION_D3D11
+	};
+
+	cap.open(path, cv::CAP_MSMF, params);
+	if (!cap.isOpened()) {
+		return false;
+	}
+
+	auto videoWidth = static_cast<std::uint32_t>(cap.get(cv::CAP_PROP_FRAME_WIDTH));
+	auto videoHeight = static_cast<std::uint32_t>(cap.get(cv::CAP_PROP_FRAME_HEIGHT));
+	auto scale = 1.0f;
+
+	auto gameWidth = RE::BSGraphics::Renderer::GetScreenSize().width;
+	if (gameWidth != videoWidth) {
+		scale = static_cast<float>(gameWidth) / videoWidth;
+		videoWidth = gameWidth;
+		videoHeight = static_cast<std::uint32_t>(videoHeight * scale);
+	}
+
+	frameCount = static_cast<std::uint32_t>(cap.get(cv::CAP_PROP_FRAME_COUNT));
+	targetFPS = static_cast<float>(cap.get(cv::CAP_PROP_FPS));
+	frameDuration = targetFPS > 0.0f ? (1.0f / targetFPS) : 0.033f;
+
+	texture = std::make_unique<ImGui::Texture>(device, videoWidth, videoHeight, scale);
+	if (!texture || !texture->texture || !texture->srView) {
+		cap.release();
+		return false;
+	}
+
+	audioLoaded = playAudio ? LoadAudio(path) : false;
+	playing = true;
+
+	CreateAudioThread();
+	CreateVideoThread();
+
+	return true;
+}
+
+void ImGui::Texture::Update(ID3D11DeviceContext* context, const cv::Mat& mat) const
+{
+	cv::Mat processedMat;
+	if (mat.channels() == 3) {
+		cv::cvtColor(mat, processedMat, cv::COLOR_BGR2BGRA);
+	} else if (mat.channels() == 4) {
+		processedMat = mat.clone();
+	} else {
+		return;
+	}
+	if (scale != 1.0f) {
+		cv::resize(processedMat, processedMat, cv::Size(), scale, scale, scale > 1.0f ? cv::INTER_CUBIC : cv::INTER_AREA);
+	}
+
+	D3D11_MAPPED_SUBRESOURCE mapped{};
+	if (SUCCEEDED(context->Map(texture.Get(), 0, D3D11_MAP_WRITE_DISCARD, 0, &mapped))) {
+		constexpr std::uint32_t bytesPerPixel = 4;  // BGRA
+		const auto              srcRowBytes = processedMat.cols * bytesPerPixel;
+
+		if (mapped.RowPitch == srcRowBytes) {
+			std::memcpy(mapped.pData, processedMat.data, processedMat.rows * srcRowBytes);
+		} else {
+			auto* dst = static_cast<std::uint8_t*>(mapped.pData);
+			for (std::int32_t y = 0; y < processedMat.rows; ++y) {
+				std::memcpy(dst + y * mapped.RowPitch, processedMat.ptr<uchar>(y), srcRowBytes);
+			}
+		}
+		context->Unmap(texture.Get(), 0);
+	}
+}
+
+void VideoPlayer::Update(ID3D11DeviceContext* context, float deltaTime)
+{
+	updateTimer.fetch_add(deltaTime, std::memory_order_relaxed);
+	
+	Locker lock(frameLock);
+	if (!videoFrame.empty()) {
+		texture->Update(context, videoFrame);
+	}
+}
+
+void VideoPlayer::ResetAudio()
+{
+	audioReader = nullptr;
+	if (audioWriter) {
+		audioWriter->Finalize();
+		audioWriter = nullptr;
+	}
+	if (mediaSink) {
+		mediaSink->Shutdown();
+		mediaSink = nullptr;
+	}
+	MFShutdown();
+	CoUninitialize();
+}
+
+void VideoPlayer::Reset()
+{
+	if (!IsPlaying()) {
+		return;
+	}
+
+	videoThread = {};
+	audioThread = {};
+
+	cap.release();
+	texture.reset();
+
+	grabbedFrameCount = 0;
+	retrievedFrameCount = 0;
+	updateTimer = 0.0f;
+
+	{
+		Locker lock(frameLock);
+		videoFrame.release();
+	}
+
+	if (audioLoaded) {
+		ResetAudio();
+		audioLoaded = false;
+	}
+
+	playing = false;
+}
+
+ImTextureID VideoPlayer::GetTextureID() const
+{
+	return texture ? (ImTextureID)texture->srView.Get() : 0;
+}
+
+ImVec2 VideoPlayer::GetNativeSize() const
+{
+	return texture ? texture->size : ImVec2{ 0.0f, 0.0f };
+}
+
+bool VideoPlayer::IsInitialized() const
+{
+	return texture && texture->srView;
+}
+
+bool VideoPlayer::IsPlaying() const
+{
+	return playing;
+}
+
+bool VideoPlayer::IsPlayingAudio() const
+{
+	return IsPlaying() && audioLoaded;
+}
+
+void VideoPlayer::ShowDebugInfo()
+{
+	auto min = ImGui::GetItemRectMin();
+	ImGui::SetCursorScreenPos(min);
+
+	ImGui::Text("Elapsed Time: %.1f seconds", elapsedTime);
+	ImGui::Text("Frames Processed: %u/%u", retrievedFrameCount.load(), frameCount);
+	ImGui::Text("Target FPS: %.1f", targetFPS);
+	ImGui::Text("Actual FPS: %.1f", actualFPS);
+}
