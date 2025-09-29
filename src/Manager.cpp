@@ -135,11 +135,14 @@ EventResult Manager::ProcessEvent(const RE::MenuOpenCloseEvent* a_evn, RE::BSTEv
 		if (a_evn->opening) {
 			if (firstBoot) {
 				firstBoot = false;
+				timer.start();
 				Manager::GetSingleton()->LoadVideo();
 			} else if (mainMenuClosed) {
 				if (videoPlayer.IsPlaying()) {
 					videoPlayer.Reset();  // main menu -> loading screen -> game
 				}
+				timer.end();
+				logger::info("Loading time: {} ms", timer.duration_ms());
 			}
 		}
 	} else if (menuName == RE::FaderMenu::MENU_NAME) {

@@ -30,4 +30,5 @@ private:
 	bool                               showBackground{ true };
 	bool                               showDebugInfo{ false };
 	bool                               playVideoAudio{ true };
+	Timer                              timer;
 };

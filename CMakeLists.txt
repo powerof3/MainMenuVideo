@@ -132,10 +132,9 @@ else ()
 	)
 endif()
 
-find_package(OpenCV COMPONENTS core videoio REQUIRED)
 find_package(imgui CONFIG REQUIRED)
+find_package(OpenCV COMPONENTS core videoio REQUIRED)
 
-find_path(BOOST_UNORDERED_INCLUDE_DIRS ".editorconfig")
 find_path(CLIB_UTIL_INCLUDE_DIRS "ClibUtil/utils.hpp")
 
 # ---- Add source files ----

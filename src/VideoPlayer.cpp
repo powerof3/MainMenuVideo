@@ -25,6 +25,25 @@ ImGui::Texture::Texture(ID3D11Device* device, std::uint32_t a_width, std::uint32
 	}
 }
 
+void ImGui::Texture::Update(ID3D11DeviceContext* context, const cv::Mat& mat) const
+{
+	D3D11_MAPPED_SUBRESOURCE mapped{};
+	if (SUCCEEDED(context->Map(texture.Get(), 0, D3D11_MAP_WRITE_DISCARD, 0, &mapped))) {
+		constexpr std::uint32_t bytesPerPixel = 4;  // BGRA
+		const auto              srcRowBytes = mat.cols * bytesPerPixel;
+
+		if (mapped.RowPitch == srcRowBytes) {
+			std::memcpy(mapped.pData, mat.data, mat.rows * srcRowBytes);
+		} else {
+			auto* dst = static_cast<std::uint8_t*>(mapped.pData);
+			for (std::int32_t y = 0; y < mat.rows; ++y) {
+				std::memcpy(dst + y * mapped.RowPitch, mat.ptr<uchar>(y), srcRowBytes);
+			}
+		}
+		context->Unmap(texture.Get(), 0);
+	}
+}
+
 // https://stackoverflow.com/a/54946067
 // convert video to use MF? later
 bool VideoPlayer::LoadAudio(const std::string& path)
@@ -119,29 +138,35 @@ void VideoPlayer::CreateVideoThread()
 					localTimer = 0.0f;
 				}
 
-				if (cap.grab()) {
-					grabbedFrameCount++;
-					if (grabbedFrameCount >= frameCount) {
-						grabbedFrameCount = 0;
-						retrievedFrameCount = 0;
+				cv::Mat frame;
+				if (cap.read(frame) && !frame.empty()) {
+					if (++readFrameCount >= frameCount) {
+						readFrameCount = 0;
 						cap.set(cv::CAP_PROP_POS_FRAMES, 0);
 
 						startTime = std::chrono::steady_clock::now();
 						lastDebugTime = startTime;
+					}	
+					cv::Mat processedFrame;
+					if (frame.channels() == 3) {
+						cv::cvtColor(frame, processedFrame, cv::COLOR_BGR2BGRA);
+					} else if (frame.channels() == 4) {
+						processedFrame = frame;
+					} else {
+						continue;
 					}
-					cv::Mat frame;
-					if (cap.retrieve(frame) && !frame.empty()) {
-						Locker lock(frameLock);
-						videoFrame = std::move(frame);
-						retrievedFrameCount++;
+					if (texture->scale != 1.0f) {
+						cv::resize(processedFrame, processedFrame, cv::Size(), texture->scale, texture->scale, texture->scale > 1.0f ? cv::INTER_CUBIC : cv::INTER_AREA);
 					}
+					Locker lock(frameLock);
+					videoFrame = std::move(processedFrame);
 				}
 
 				auto now = std::chrono::steady_clock::now();
 				if (std::chrono::duration<float>(now - lastDebugTime).count() >= 0.1f) {
 					float totalElapsed = std::chrono::duration<float>(now - startTime).count();
 					elapsedTime = totalElapsed;
-					actualFPS = retrievedFrameCount / totalElapsed;
+					actualFPS = readFrameCount / totalElapsed;
 					lastDebugTime = now;
 				}
 			}
@@ -230,37 +255,6 @@ bool VideoPlayer::LoadVideo(ID3D11Device* device, const std::string& path, bool 
 	return true;
 }
 
-void ImGui::Texture::Update(ID3D11DeviceContext* context, const cv::Mat& mat) const
-{
-	cv::Mat processedMat;
-	if (mat.channels() == 3) {
-		cv::cvtColor(mat, processedMat, cv::COLOR_BGR2BGRA);
-	} else if (mat.channels() == 4) {
-		processedMat = mat.clone();
-	} else {
-		return;
-	}
-	if (scale != 1.0f) {
-		cv::resize(processedMat, processedMat, cv::Size(), scale, scale, scale > 1.0f ? cv::INTER_CUBIC : cv::INTER_AREA);
-	}
-
-	D3D11_MAPPED_SUBRESOURCE mapped{};
-	if (SUCCEEDED(context->Map(texture.Get(), 0, D3D11_MAP_WRITE_DISCARD, 0, &mapped))) {
-		constexpr std::uint32_t bytesPerPixel = 4;  // BGRA
-		const auto              srcRowBytes = processedMat.cols * bytesPerPixel;
-
-		if (mapped.RowPitch == srcRowBytes) {
-			std::memcpy(mapped.pData, processedMat.data, processedMat.rows * srcRowBytes);
-		} else {
-			auto* dst = static_cast<std::uint8_t*>(mapped.pData);
-			for (std::int32_t y = 0; y < processedMat.rows; ++y) {
-				std::memcpy(dst + y * mapped.RowPitch, processedMat.ptr<uchar>(y), srcRowBytes);
-			}
-		}
-		context->Unmap(texture.Get(), 0);
-	}
-}
-
 void VideoPlayer::Update(ID3D11DeviceContext* context, float deltaTime)
 {
 	updateTimer.fetch_add(deltaTime, std::memory_order_relaxed);
@@ -298,8 +292,7 @@ void VideoPlayer::Reset()
 	cap.release();
 	texture.reset();
 
-	grabbedFrameCount = 0;
-	retrievedFrameCount = 0;
+	readFrameCount = 0;
 	updateTimer = 0.0f;
 
 	{
@@ -346,7 +339,7 @@ void VideoPlayer::ShowDebugInfo()
 	ImGui::SetCursorScreenPos(min);
 
 	ImGui::Text("Elapsed Time: %.1f seconds", elapsedTime);
-	ImGui::Text("Frames Processed: %u/%u", retrievedFrameCount.load(), frameCount);
+	ImGui::Text("Frames Processed: %u/%u", readFrameCount.load(), frameCount);
 	ImGui::Text("Target FPS: %.1f", targetFPS);
 	ImGui::Text("Actual FPS: %.1f", actualFPS);
 }
