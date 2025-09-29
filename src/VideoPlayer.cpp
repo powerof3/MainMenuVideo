@@ -48,18 +48,7 @@ void ImGui::Texture::Update(ID3D11DeviceContext* context, const cv::Mat& mat) co
 // convert video to use MF? later
 bool VideoPlayer::LoadAudio(const std::string& path)
 {
-	HRESULT hr = CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED | COINIT_DISABLE_OLE1DDE);
-	if (FAILED(hr)) {
-		return false;
-	}
-
-	hr = MFStartup(MF_VERSION);
-	if (FAILED(hr)) {
-		CoUninitialize();
-		return false;
-	}
-
-	hr = MFCreateSourceReaderFromURL(stl::utf8_to_utf16(path)->c_str(), nullptr, &audioReader);
+	HRESULT hr = MFCreateSourceReaderFromURL(stl::utf8_to_utf16(path)->c_str(), nullptr, &audioReader);
 	if (SUCCEEDED(hr)) {  // Select only the audio stream
 		hr = audioReader->SetStreamSelection((DWORD)MF_SOURCE_READER_ALL_STREAMS, FALSE);
 		if (SUCCEEDED(hr)) {
@@ -90,11 +79,16 @@ bool VideoPlayer::LoadAudio(const std::string& path)
 									hr = audioReader->SetCurrentMediaType((DWORD)MF_SOURCE_READER_FIRST_AUDIO_STREAM, NULL, inputType.Get());
 									if (SUCCEEDED(hr)) {
 										hr = typeHandler->SetCurrentMediaType(inputType.Get());
+										ComPtr<IMFAttributes> sinkWriterAttributes;
+										hr = MFCreateAttributes(&sinkWriterAttributes, 1);
 										if (SUCCEEDED(hr)) {
-											hr = MFCreateSinkWriterFromMediaSink(mediaSink.Get(), nullptr, &audioWriter);
+											hr = sinkWriterAttributes->SetUINT32(MF_READWRITE_ENABLE_HARDWARE_TRANSFORMS, 1);
 											if (SUCCEEDED(hr)) {
-												audioWriter->SetInputMediaType(0, inputType.Get(), nullptr);
-												return true;
+												hr = MFCreateSinkWriterFromMediaSink(mediaSink.Get(), nullptr, &audioWriter);
+												if (SUCCEEDED(hr)) {
+													audioWriter->SetInputMediaType(0, inputType.Get(), nullptr);
+													return true;
+												}
 											}
 										}
 									}
@@ -146,7 +140,7 @@ void VideoPlayer::CreateVideoThread()
 
 						startTime = std::chrono::steady_clock::now();
 						lastDebugTime = startTime;
-					}	
+					}
 					cv::Mat processedFrame;
 					if (frame.channels() == 3) {
 						cv::cvtColor(frame, processedFrame, cv::COLOR_BGR2BGRA);
@@ -276,8 +270,6 @@ void VideoPlayer::ResetAudio()
 		mediaSink->Shutdown();
 		mediaSink = nullptr;
 	}
-	MFShutdown();
-	CoUninitialize();
 }
 
 void VideoPlayer::Reset()
@@ -289,9 +281,6 @@ void VideoPlayer::Reset()
 	videoThread = {};
 	audioThread = {};
 
-	cap.release();
-	texture.reset();
-
 	readFrameCount = 0;
 	updateTimer = 0.0f;
 
@@ -300,10 +289,14 @@ void VideoPlayer::Reset()
 		videoFrame.release();
 	}
 
+	texture.reset();
+
 	if (audioLoaded) {
 		ResetAudio();
 		audioLoaded = false;
 	}
+
+	cap.release();
 
 	playing = false;
 }
