@@ -50,10 +50,9 @@ void Manager::Draw()
 
 	ImGui::Begin("##MainMenuVideo", nullptr, ImGuiWindowFlags_NoInputs | ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_NoBackground);
 	{
-		if (showBackground) {
+		if (videoSize != screenSize && showBackground) {
 			ImGui::GetBackgroundDrawList()->AddRectFilled(ImVec2(0, 0), screenSize, IM_COL32_BLACK);
 		}
-
 		ImGui::Image(videoPlayer.GetTextureID(), videoSize);
 		if (showDebugInfo) {
 			videoPlayer.ShowDebugInfo();

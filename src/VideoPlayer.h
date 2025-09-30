@@ -63,7 +63,6 @@ private:
 	std::uint32_t                   frameCount{ 0 };
 	float                           frameDuration{ 0.0f };
 	std::atomic<std::uint32_t>      readFrameCount{ 0 };
-	std::uint32_t                   lastReadFrameCount{ 0 };
 	float                           elapsedTime{ 0.0f };
 	std::atomic<float>              updateTimer{ 0.0f };
 	std::jthread                    videoThread;
