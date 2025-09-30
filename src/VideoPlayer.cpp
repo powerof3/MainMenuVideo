@@ -86,8 +86,10 @@ bool VideoPlayer::LoadAudio(const std::string& path)
 											if (SUCCEEDED(hr)) {
 												hr = MFCreateSinkWriterFromMediaSink(mediaSink.Get(), nullptr, &audioWriter);
 												if (SUCCEEDED(hr)) {
-													audioWriter->SetInputMediaType(0, inputType.Get(), nullptr);
-													return true;
+													hr = audioWriter->SetInputMediaType(0, inputType.Get(), nullptr);
+													if (SUCCEEDED(hr)) {
+														return true;
+													}
 												}
 											}
 										}
