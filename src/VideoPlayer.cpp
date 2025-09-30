@@ -268,6 +268,7 @@ void VideoPlayer::ResetAudio()
 {
 	audioReader = nullptr;
 	if (audioWriter) {
+		audioWriter->Flush(0);
 		audioWriter->Finalize();
 		audioWriter = nullptr;
 	}
@@ -280,16 +281,14 @@ void VideoPlayer::ResetAudio()
 void VideoPlayer::ResetImpl()
 {
 	videoThread = {};
-	audioThread = {};
-
 	readFrameCount = 0;
 	updateTimer = 0.0f;
-
 	{
 		Locker lock(frameLock);
 		videoFrame.release();
-	}
-
+	}	
+	
+	audioThread = {};
 	if (audioLoaded) {
 		ResetAudio();
 		audioLoaded = false;
