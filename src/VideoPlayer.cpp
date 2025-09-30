@@ -205,10 +205,6 @@ void VideoPlayer::CreateAudioThread()
 
 bool VideoPlayer::LoadVideo(ID3D11Device* device, const std::string& path, bool playAudio)
 {
-	if (IsPlaying()) {
-		Reset();
-	}
-
 	static std::vector<std::int32_t> params{
 		cv::CAP_PROP_HW_ACCELERATION,
 		cv::VIDEO_ACCELERATION_D3D11
@@ -272,12 +268,8 @@ void VideoPlayer::ResetAudio()
 	}
 }
 
-void VideoPlayer::Reset()
+void VideoPlayer::ResetImpl()
 {
-	if (!IsPlaying()) {
-		return;
-	}
-
 	videoThread = {};
 	audioThread = {};
 
@@ -289,16 +281,27 @@ void VideoPlayer::Reset()
 		videoFrame.release();
 	}
 
-	texture.reset();
-
 	if (audioLoaded) {
 		ResetAudio();
 		audioLoaded = false;
 	}
 
+	texture.reset();
 	cap.release();
 
+	resetting = false;
 	playing = false;
+}
+
+void VideoPlayer::Reset()
+{
+	if (!IsPlaying() || resetting.exchange(true)) {
+		return;
+	}
+
+	resetThread = std::jthread([this](std::stop_token) {
+		ResetImpl();
+	});
 }
 
 ImTextureID VideoPlayer::GetTextureID() const
@@ -318,7 +321,7 @@ bool VideoPlayer::IsInitialized() const
 
 bool VideoPlayer::IsPlaying() const
 {
-	return playing;
+	return playing.load() && !resetting.load();
 }
 
 bool VideoPlayer::IsPlayingAudio() const

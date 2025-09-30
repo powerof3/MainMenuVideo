@@ -24,7 +24,11 @@ public:
 	VideoPlayer() = default;
 	~VideoPlayer()
 	{
-		Reset();
+		if (resetting.exchange(true) == false) {
+			ResetImpl();
+		} else {
+			resetThread.request_stop();
+		}
 	}
 
 	bool LoadVideo(ID3D11Device* device, const std::string& path, bool playAudio);
@@ -47,6 +51,8 @@ private:
 	bool LoadAudio(const std::string& path);
 	void ResetAudio();
 
+	void ResetImpl();
+
 	using Lock = std::mutex;
 	using Locker = std::scoped_lock<Lock>;
 
@@ -68,4 +74,6 @@ private:
 	mutable Lock                    frameLock;
 	bool                            audioLoaded{ false };
 	std::atomic<bool>               playing{ false };
+	std::jthread                    resetThread;
+	std::atomic<bool>               resetting{ false };
 };
