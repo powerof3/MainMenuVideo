@@ -145,15 +145,17 @@ void VideoPlayer::CreateVideoThread()
 					if (frame.channels() == 3) {
 						cv::cvtColor(frame, processedFrame, cv::COLOR_BGR2BGRA);
 					} else if (frame.channels() == 4) {
-						processedFrame = frame;
+						processedFrame = frame.clone();
 					} else {
 						continue;
 					}
 					if (texture->scale != 1.0f) {
 						cv::resize(processedFrame, processedFrame, cv::Size(), texture->scale, texture->scale, texture->scale > 1.0f ? cv::INTER_CUBIC : cv::INTER_AREA);
 					}
-					Locker lock(frameLock);
-					videoFrame = std::move(processedFrame);
+					{
+						Locker lock(frameLock);
+						videoFrame = std::move(processedFrame);
+					}
 				}
 
 				auto now = std::chrono::steady_clock::now();
@@ -249,9 +251,16 @@ void VideoPlayer::Update(ID3D11DeviceContext* context, float deltaTime)
 {
 	updateTimer.fetch_add(deltaTime, std::memory_order_relaxed);
 
-	Locker lock(frameLock);
-	if (!videoFrame.empty()) {
-		texture->Update(context, videoFrame);
+	cv::Mat frameCopy;
+	{
+		Locker lock(frameLock);
+		if (!videoFrame.empty()) {
+			frameCopy = videoFrame.clone();
+		}
+	}
+
+	if (!frameCopy.empty() && texture) {
+		texture->Update(context, frameCopy);
 	}
 }
 
