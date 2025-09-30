@@ -286,8 +286,8 @@ void VideoPlayer::ResetImpl()
 	{
 		Locker lock(frameLock);
 		videoFrame.release();
-	}	
-	
+	}
+
 	audioThread = {};
 	if (audioLoaded) {
 		ResetAudio();
