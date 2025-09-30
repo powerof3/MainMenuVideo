@@ -22,6 +22,7 @@
 #include <mfreadwrite.h>
 #include <propvarutil.h>
 
+#include <ClibUtil/RNG.hpp>
 #include <ClibUtil/simpleINI.hpp>
 #include <ClibUtil/string.hpp>
 #include <ClibUtil/timer.hpp>

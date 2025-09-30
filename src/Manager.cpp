@@ -78,18 +78,27 @@ bool Manager::LoadVideo()
 
 	if (auto renderer = RE::BSGraphics::Renderer::GetSingleton()) {
 		if (auto device = reinterpret_cast<ID3D11Device*>(renderer->data.forwarder)) {
-			static std::random_device rd;
-			static std::mt19937       rng(rd());
-			std::ranges::shuffle(videoPaths, rng);
+			std::size_t numVideos = videoPaths.size();
 
-			std::uint32_t index = 0;
-			for (auto& path : videoPaths) {
-				if (videoPlayer.LoadVideo(device, path.string(), playVideoAudio)) {
-					selectedIndex = index;
+			if (numVideos == 1) {
+				if (videoPlayer.LoadVideo(device, videoPaths[0].string(), playVideoAudio)) {
+					selectedIndex = 0;
 					return true;
 				}
-				index++;
+				return false;
 			}
+
+			static clib_util::RNG rng{};
+			std::size_t           randIndex = rng.generate<std::size_t>(0, numVideos - 2);
+			std::size_t           nextIndex = (randIndex >= selectedIndex) ? randIndex + 1 : randIndex;
+
+			if (videoPlayer.LoadVideo(device, videoPaths[nextIndex].string(), playVideoAudio)) {
+				selectedIndex = nextIndex;
+				return true;
+			}
+
+			// fallback
+			return videoPlayer.LoadVideo(device, videoPaths[selectedIndex].string(), playVideoAudio);
 		}
 	}
 
@@ -134,14 +143,11 @@ EventResult Manager::ProcessEvent(const RE::MenuOpenCloseEvent* a_evn, RE::BSTEv
 		if (a_evn->opening) {
 			if (firstBoot) {
 				firstBoot = false;
-				timer.start();
 				Manager::GetSingleton()->LoadVideo();
 			} else if (mainMenuClosed) {
 				if (videoPlayer.IsPlaying()) {
 					videoPlayer.Reset();  // main menu -> loading screen -> game
 				}
-				timer.end();
-				logger::info("Loading time: {} ms", timer.duration_ms());
 			}
 		}
 	} else if (menuName == RE::FaderMenu::MENU_NAME) {

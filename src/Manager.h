@@ -23,12 +23,11 @@ private:
 
 	// members
 	std::vector<std::filesystem::path> videoPaths;
-	std::uint32_t                      selectedIndex{ 0 };
+	std::size_t                        selectedIndex{ 0 };
 	VideoPlayer                        videoPlayer;
 	bool                               firstBoot{ true };
 	bool                               mainMenuClosed{ false };
 	bool                               showBackground{ true };
 	bool                               showDebugInfo{ false };
 	bool                               playVideoAudio{ true };
-	Timer                              timer;
 };
