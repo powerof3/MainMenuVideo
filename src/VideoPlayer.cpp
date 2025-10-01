@@ -181,7 +181,7 @@ void VideoPlayer::CreateAudioThread()
 	if (audioLoaded && !audioThread.joinable()) {
 		audioThread = std::jthread([this](std::stop_token st) {
 			startLatch.arrive_and_wait();  // wait until both video+audio are ready
-			
+
 			audioWriter->BeginWriting();
 			while (!st.stop_requested()) {
 				ComPtr<IMFSample> sample;
