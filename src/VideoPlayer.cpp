@@ -220,6 +220,7 @@ bool VideoPlayer::LoadVideo(ID3D11Device* device, const std::string& path, bool 
 
 	cap.open(path, cv::CAP_MSMF, params);
 	if (!cap.isOpened()) {
+		logger::info("Couldn't open {}", path);
 		return false;
 	}
 
