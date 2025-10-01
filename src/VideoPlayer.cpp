@@ -112,7 +112,9 @@ void VideoPlayer::CreateVideoThread()
 {
 	if (!videoThread.joinable()) {
 		videoThread = std::jthread([this](std::stop_token st) {
-			startLatch.arrive_and_wait();  // wait until both video+audio are ready
+			if (audioLoaded) {
+				startLatch.arrive_and_wait();  // wait until both video+audio are ready
+			}
 			
 			auto  startTime = std::chrono::steady_clock::now();
 			auto  lastDebugTime = startTime;
