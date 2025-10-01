@@ -65,12 +65,13 @@ private:
 	std::atomic<std::uint32_t>      readFrameCount{ 0 };
 	float                           elapsedTime{ 0.0f };
 	std::atomic<float>              updateTimer{ 0.0f };
-	std::jthread                    videoThread;
 	cv::Mat                         videoFrame;
 	ComPtr<IMFSourceReader>         audioReader{};
 	ComPtr<IMFSinkWriter>           audioWriter{};
 	ComPtr<IMFMediaSink>            mediaSink{};
 	std::jthread                    audioThread;
+	std::jthread                    videoThread;
+	std::latch                      startLatch{ 2 };
 	mutable Lock                    frameLock;
 	bool                            audioLoaded{ false };
 	std::atomic<bool>               playing{ false };

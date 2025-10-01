@@ -11,6 +11,7 @@
 
 #include <d3d11.h>
 #include <dxgi.h>
+#include <latch>
 #include <shared_mutex>
 #include <shlobj.h>
 #include <wrl/client.h>
