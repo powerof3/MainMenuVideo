@@ -47,6 +47,7 @@ public:
 private:
 	void CreateVideoThread();
 	void CreateAudioThread();
+	void RestartAudioThread();
 
 	bool LoadAudio(const std::string& path);
 	void ResetAudio();
@@ -56,6 +57,7 @@ private:
 	using Lock = std::mutex;
 	using Locker = std::scoped_lock<Lock>;
 
+	std::string                     currentVideo;
 	cv::VideoCapture                cap;
 	std::unique_ptr<ImGui::Texture> texture;
 	float                           targetFPS{ 30.0f };
@@ -71,10 +73,11 @@ private:
 	ComPtr<IMFMediaSink>            mediaSink{};
 	std::jthread                    audioThread;
 	std::jthread                    videoThread;
-	std::latch                      startLatch{ 2 };
+	std::jthread                    resetThread;
+	std::barrier<>                  startBarrier{ 2 };
 	mutable Lock                    frameLock;
 	bool                            audioLoaded{ false };
 	std::atomic<bool>               playing{ false };
-	std::jthread                    resetThread;
+	std::atomic<bool>               looping{ false };
 	std::atomic<bool>               resetting{ false };
 };

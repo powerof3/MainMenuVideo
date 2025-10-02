@@ -9,6 +9,7 @@
 #include "REX/REX/Singleton.h"
 #include "SKSE/SKSE.h"
 
+#include <barrier>
 #include <d3d11.h>
 #include <dxgi.h>
 #include <latch>

@@ -113,24 +113,45 @@ void VideoPlayer::CreateVideoThread()
 	if (!videoThread.joinable()) {
 		videoThread = std::jthread([this](std::stop_token st) {
 			if (audioLoaded) {
-				startLatch.arrive_and_wait();  // wait until both video+audio are ready
+				startBarrier.arrive_and_wait();  // wait until both video+audio are ready
 			}
 
 			auto  startTime = std::chrono::steady_clock::now();
 			auto  lastDebugTime = startTime;
 			float localTimer = 0.0f;
+			bool  justReset = true;
+
+			auto force_reset_cap = [&]() {
+				readFrameCount = 0;
+
+				cap.release();
+				bool ok = cap.open(currentVideo);
+
+				startTime = std::chrono::steady_clock::now();
+				lastDebugTime = startTime;
+				localTimer = 0.0f;
+				looping = true;
+				justReset = true;
+
+				RestartAudioThread();
+
+				return ok;
+			};
 
 			while (!st.stop_requested()) {
 				float dt = updateTimer.exchange(0.0f, std::memory_order_acq_rel);
 				localTimer += dt;
 
-				if (localTimer < frameDuration) {
-					auto sleepTime = frameDuration - localTimer;
-					if (sleepTime > 0.0f) {
-						std::this_thread::sleep_for(std::chrono::duration<float>(sleepTime));
+				if (!justReset) {
+					if (localTimer < frameDuration) {
+						auto sleepTime = frameDuration - localTimer;
+						if (sleepTime > 0.0f) {
+							std::this_thread::sleep_for(std::chrono::duration<float>(sleepTime));
+						}
+						continue;
 					}
-					continue;
 				}
+				justReset = false;
 
 				localTimer -= frameDuration;
 
@@ -140,13 +161,6 @@ void VideoPlayer::CreateVideoThread()
 
 				cv::Mat frame;
 				if (cap.read(frame) && !frame.empty()) {
-					if (++readFrameCount >= frameCount) {
-						readFrameCount = 0;
-						cap.set(cv::CAP_PROP_POS_FRAMES, 0);
-
-						startTime = std::chrono::steady_clock::now();
-						lastDebugTime = startTime;
-					}
 					cv::Mat processedFrame;
 					if (frame.channels() == 3) {
 						cv::cvtColor(frame, processedFrame, cv::COLOR_BGR2BGRA);
@@ -162,6 +176,9 @@ void VideoPlayer::CreateVideoThread()
 						Locker lock(frameLock);
 						videoFrame = std::move(processedFrame);
 					}
+					readFrameCount++;
+				} else {
+					force_reset_cap();
 				}
 
 				auto now = std::chrono::steady_clock::now();
@@ -180,13 +197,15 @@ void VideoPlayer::CreateAudioThread()
 {
 	if (audioLoaded && !audioThread.joinable()) {
 		audioThread = std::jthread([this](std::stop_token st) {
-			startLatch.arrive_and_wait();  // wait until both video+audio are ready
-
+			if (!looping) {
+				startBarrier.arrive_and_wait();
+			}
 			audioWriter->BeginWriting();
+
 			while (!st.stop_requested()) {
 				ComPtr<IMFSample> sample;
-				DWORD             streamFlags;
-				MFTIME            timestamp;
+				DWORD             streamFlags = 0;
+				MFTIME            timestamp = 0;
 
 				HRESULT hr = audioReader->ReadSample((DWORD)MF_SOURCE_READER_FIRST_AUDIO_STREAM, 0, nullptr, &streamFlags, &timestamp, &sample);
 				if (FAILED(hr)) {
@@ -194,10 +213,6 @@ void VideoPlayer::CreateAudioThread()
 				}
 
 				if (streamFlags & MF_SOURCE_READERF_ENDOFSTREAM) {
-					PROPVARIANT var;
-					InitPropVariantFromInt64(0, &var);
-					audioReader->SetCurrentPosition(GUID_NULL, var);
-					PropVariantClear(&var);
 					continue;
 				}
 
@@ -213,6 +228,16 @@ void VideoPlayer::CreateAudioThread()
 	}
 }
 
+void VideoPlayer::RestartAudioThread()
+{
+	if (audioLoaded) {
+		audioThread = {};
+		ResetAudio();
+		audioLoaded = LoadAudio(currentVideo);
+		CreateAudioThread();
+	}
+}
+
 bool VideoPlayer::LoadVideo(ID3D11Device* device, const std::string& path, bool playAudio)
 {
 	static std::vector<std::int32_t> params{
@@ -225,6 +250,8 @@ bool VideoPlayer::LoadVideo(ID3D11Device* device, const std::string& path, bool 
 		logger::info("Couldn't open {}", path);
 		return false;
 	}
+
+	currentVideo = path;
 
 	auto videoWidth = static_cast<std::uint32_t>(cap.get(cv::CAP_PROP_FRAME_WIDTH));
 	auto videoHeight = static_cast<std::uint32_t>(cap.get(cv::CAP_PROP_FRAME_HEIGHT));
@@ -306,6 +333,7 @@ void VideoPlayer::ResetImpl()
 	texture.reset();
 	cap.release();
 
+	looping = false;
 	resetting = false;
 	playing = false;
 }
