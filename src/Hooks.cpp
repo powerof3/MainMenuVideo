@@ -45,9 +45,14 @@ namespace Hooks
 		const auto gameVersion = detail::GetGameVersion();
 
 		std::array targets{
-			std::make_pair(RELOCATION_ID(51238, 52110), (gameVersion >= SKSE::RUNTIME_SSE_1_6_629 && gameVersion <= SKSE::RUNTIME_SSE_1_6_640 ?
-																0x22 :
-																OFFSET(0x19, 0x2A))),
+			std::make_pair(RELOCATION_ID(51238, 52110),
+#ifdef SKYRIM_AE
+				(gameVersion >= SKSE::RUNTIME_SSE_1_6_629 && gameVersion <= SKSE::RUNTIME_SSE_1_6_640 ?
+						0x22 :
+						0x2A)),
+#else
+				OFFSET(0x19, 0x2A)),
+#endif
 
 			std::make_pair(RELOCATION_ID(51259, 52137), OFFSET(0xFD, 0x2DD)),
 		};
