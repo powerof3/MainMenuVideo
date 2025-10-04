@@ -247,7 +247,7 @@ bool VideoPlayer::LoadVideo(ID3D11Device* device, const std::string& path, bool 
 
 	cap.open(path, cv::CAP_MSMF, params);
 	if (!cap.isOpened()) {
-		logger::info("Couldn't open {}", path);
+		logger::warn("Couldn't open {}", path);
 		return false;
 	}
 
@@ -255,18 +255,20 @@ bool VideoPlayer::LoadVideo(ID3D11Device* device, const std::string& path, bool 
 
 	auto videoWidth = static_cast<std::uint32_t>(cap.get(cv::CAP_PROP_FRAME_WIDTH));
 	auto videoHeight = static_cast<std::uint32_t>(cap.get(cv::CAP_PROP_FRAME_HEIGHT));
-	auto scale = 1.0f;
-
-	auto gameWidth = RE::BSGraphics::Renderer::GetScreenSize().width;
-	if (gameWidth != videoWidth) {
-		scale = static_cast<float>(gameWidth) / videoWidth;
-		videoWidth = gameWidth;
-		videoHeight = static_cast<std::uint32_t>(videoHeight * scale);
-	}
-
 	frameCount = static_cast<std::uint32_t>(cap.get(cv::CAP_PROP_FRAME_COUNT));
 	targetFPS = static_cast<float>(cap.get(cv::CAP_PROP_FPS));
 	frameDuration = targetFPS > 0.0f ? (1.0f / targetFPS) : 0.033f;
+
+	logger::info("Loading {} ({}x{}|{} FPS|{} frames)", path, videoWidth, videoHeight, targetFPS, frameCount);
+
+	auto scale = 1.0f;
+	if (auto gameWidth = RE::BSGraphics::Renderer::GetScreenSize().width; gameWidth != videoWidth) {
+		scale = static_cast<float>(gameWidth) / videoWidth;
+		auto newVideoHeight = static_cast<std::uint32_t>(videoHeight * scale);
+		logger::info("\tScaling to fit game resolution({}x{}->{}x{} ({}X))", path, videoWidth, videoHeight, gameWidth, newVideoHeight, scale);
+		videoWidth = gameWidth;
+		videoHeight = newVideoHeight;
+	}
 
 	texture = std::make_unique<ImGui::Texture>(device, videoWidth, videoHeight, scale);
 	if (!texture || !texture->texture || !texture->srView) {

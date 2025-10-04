@@ -6,7 +6,9 @@
 
 void Manager::Register()
 {
+	logger::info("Loading settings...");	
 	LoadSettings();
+	logger::info("Getting video list...");	
 	GetVideoList();
 
 	if (videoPaths.empty()) {
@@ -121,11 +123,20 @@ void Manager::GetVideoList()
 
 	std::error_code ec;
 	if (!std::filesystem::exists(directory, ec)) {
+		logger::error("Unable to find Data\\MainMenuVideo directory: {}", ec.message());
 		return;
 	}
 
-	for (auto& i : std::filesystem::directory_iterator(directory)) {
-		videoPaths.push_back({ i.path().string() });
+	std::filesystem::directory_iterator iterator(directory, ec);
+	if (ec) {
+		logger::error("Unable to iterate over Data\\MainMenuVideo directory: {}", ec.message());
+		return;
+	}
+
+	for (auto& entry: iterator) {
+		if (entry.is_regular_file(ec) && !ec) {
+			videoPaths.push_back({ entry.path().string() });
+		}
 	}
 }
 
