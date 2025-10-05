@@ -427,7 +427,7 @@ void VideoPlayer::ShowDebugInfo()
 {
 	auto min = ImGui::GetItemRectMin();
 	ImGui::SetCursorScreenPos(min);
-	
+
 	if (IsTransitioning()) {
 		ImGui::Text("TRANSITIONING");
 		return;
