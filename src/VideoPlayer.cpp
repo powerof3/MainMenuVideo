@@ -123,14 +123,23 @@ void VideoPlayer::CreateVideoThread()
 			if (audioLoaded) {
 				startBarrier.arrive_and_wait();  // wait until both video+audio are ready
 			}
-
 			transitioning.store(false);
 			playing.store(true);
 
-			auto  startTime = std::chrono::steady_clock::now();
-			auto  lastDebugTime = startTime;
-			float localTimer = 0.0f;
-			bool  justReset = true;
+			using clock = std::chrono::steady_clock;
+			using duration = std::chrono::duration<double>;
+			using time_point = std::chrono::time_point<clock, duration>;
+
+			const auto frameDuration = duration(1.0 / targetFPS);
+			const auto debugUpdateInterval = duration(0.1);  // 0.1s
+
+			time_point frameStartTime = clock::now();
+			time_point playbackStart = frameStartTime;
+			time_point debugUpdateInfoTime = frameStartTime;
+
+			cv::Mat frame;
+			cv::Mat processedFrame;
+			bool    started = true;
 
 			auto on_video_end = [&]() {
 				switch (playbackMode) {
@@ -143,17 +152,17 @@ void VideoPlayer::CreateVideoThread()
 				case PLAYBACK_MODE::kLoop:
 					{
 						readFrameCount.store(0);
-
 						cap.release();
 						cap.open(currentVideo);
-
-						startTime = std::chrono::steady_clock::now();
-						lastDebugTime = startTime;
-						localTimer = 0.0f;
-						looping.store(true);
-						justReset = true;
-
 						RestartAudioThread();
+						if (audioLoaded) {
+							startBarrier.arrive_and_wait();
+						}
+						// Reset timing for new loop
+						frameStartTime = clock::now();
+						playbackStart = frameStartTime;
+						debugUpdateInfoTime = frameStartTime;
+						started = true;
 					}
 					break;
 				default:
@@ -161,62 +170,74 @@ void VideoPlayer::CreateVideoThread()
 				}
 			};
 
-			while (true) {
-				if (st.stop_requested()) {
-					break;
-				}
-				
-				float dt = updateTimer.exchange(0.0f, std::memory_order_acq_rel);
-				localTimer += dt;
+			while (!st.stop_requested()) {
+				const auto now = clock::now();
+				const auto elapsed = now - frameStartTime;
 
-				if (!justReset) {
-					if (localTimer < frameDuration) {
-						auto sleepTime = frameDuration - localTimer;
-						if (sleepTime > 0.0f) {
-							std::this_thread::sleep_for(std::chrono::duration<float>(sleepTime));
-						}
-						continue;
+				if (!started && elapsed < frameDuration) {
+					const auto sleepDuration = frameDuration - elapsed;
+					if (sleepDuration > std::chrono::milliseconds(0)) {
+						std::this_thread::sleep_for(sleepDuration);
 					}
-				}
-				justReset = false;
-
-				localTimer -= frameDuration;
-
-				if (localTimer > 5.0f * frameDuration) {
-					localTimer = 0.0f;
+					continue;
 				}
 
-				cv::Mat frame;
+				started = false;
+
 				if (cap.read(frame) && !frame.empty()) {
-					cv::Mat processedFrame;
 					if (frame.channels() == 3) {
 						cv::cvtColor(frame, processedFrame, cv::COLOR_BGR2BGRA);
 					} else if (frame.channels() == 4) {
 						processedFrame = frame.clone();
 					} else {
+						frameStartTime += frameDuration;
 						continue;
 					}
 					if (texture->scale != 1.0f) {
 						cv::resize(processedFrame, processedFrame, cv::Size(), texture->scale, texture->scale, texture->scale > 1.0f ? cv::INTER_CUBIC : cv::INTER_AREA);
 					}
 					{
-						Locker lock(frameLock);
+						WriteLocker lock(videoFrameLock);
 						videoFrame = std::move(processedFrame);
 					}
-					readFrameCount++;
+					readFrameCount.fetch_add(1, std::memory_order_relaxed);
 				} else {
 					on_video_end();
+					continue;
 				}
 
-				auto now = std::chrono::steady_clock::now();
-				if (std::chrono::duration<float>(now - lastDebugTime).count() >= 0.1f) {
-					float totalElapsed = std::chrono::duration<float>(now - startTime).count();
-					elapsedTime = totalElapsed;
-					actualFPS = readFrameCount.load() / totalElapsed;
-					lastDebugTime = now;
+				started = false;
+				frameStartTime += frameDuration;
+
+				if (now - frameStartTime > frameDuration * 2) {
+					const auto expectedElapsed = readFrameCount.load(std::memory_order_relaxed) * frameDuration;
+					frameStartTime = playbackStart + expectedElapsed;
+				}
+
+				if (now - debugUpdateInfoTime >= debugUpdateInterval) {
+					const auto totalElapsed = duration(now - playbackStart).count();
+					const auto frameCount = readFrameCount.load(std::memory_order_relaxed);
+					elapsedTime = static_cast<float>(totalElapsed);
+					actualFPS = static_cast<float>(frameCount / totalElapsed);
+					debugUpdateInfoTime = now;
 				}
 			}
 		});
+	}
+}
+
+void VideoPlayer::Update(ID3D11DeviceContext* context)
+{
+	cv::Mat frameCopy;
+	{
+		ReadLocker lock(videoFrameLock);
+		if (!videoFrame.empty()) {
+			frameCopy = videoFrame.clone();
+		}
+	}
+
+	if (!frameCopy.empty() && texture) {
+		texture->Update(context, frameCopy);
 	}
 }
 
@@ -229,11 +250,7 @@ void VideoPlayer::CreateAudioThread()
 			}
 			audioWriter->BeginWriting();
 
-			while (true) {
-				if (st.stop_requested()) {
-					break;
-				}
-
+			while (!st.stop_requested()) {
 				ComPtr<IMFSample> sample;
 				DWORD             streamFlags = 0;
 				MFTIME            timestamp = 0;
@@ -319,23 +336,6 @@ bool VideoPlayer::LoadVideo(ID3D11Device* device, const std::string& path, bool 
 	return true;
 }
 
-void VideoPlayer::Update(ID3D11DeviceContext* context, float deltaTime)
-{
-	updateTimer.fetch_add(deltaTime, std::memory_order_relaxed);
-
-	cv::Mat frameCopy;
-	{
-		Locker lock(frameLock);
-		if (!videoFrame.empty()) {
-			frameCopy = videoFrame.clone();
-		}
-	}
-
-	if (!frameCopy.empty() && texture) {
-		texture->Update(context, frameCopy);
-	}
-}
-
 void VideoPlayer::ResetAudio(bool playNextVideo)
 {
 	audioReader = nullptr;
@@ -366,12 +366,11 @@ void VideoPlayer::ResetImpl(bool playNextVideo)
 		audioThread.join();
 	}
 
-	readFrameCount = 0;
-	elapsedTime = 0.0f;
-	updateTimer = 0.0f;
+	readFrameCount.store(0);
+	elapsedTime.store(0);
 
 	{
-		Locker lock(frameLock);
+		WriteLocker lock(videoFrameLock);
 		videoFrame.release();
 	}
 
@@ -435,7 +434,7 @@ bool VideoPlayer::IsTransitioning() const
 
 bool VideoPlayer::IsPlayingAudio() const
 {
-	return IsPlaying() && audioLoaded;
+	return IsPlaying() && audioThread.joinable();
 }
 
 void VideoPlayer::ShowDebugInfo()
@@ -449,10 +448,10 @@ void VideoPlayer::ShowDebugInfo()
 	}
 
 	ImGui::Text("%s", currentVideo.c_str());
-	ImGui::Text("\tElapsed Time: %.1f seconds", elapsedTime);
+	ImGui::Text("\tElapsed Time: %.1f seconds", elapsedTime.load());
 	ImGui::Text("\tFrames Processed: %u/%u", readFrameCount.load(), frameCount);
 	ImGui::Text("\tTarget FPS: %.1f", targetFPS);
-	ImGui::Text("\tActual FPS: %.1f", actualFPS);
+	ImGui::Text("\tActual FPS: %.1f", actualFPS.load());
 }
 
 PLAYBACK_MODE VideoPlayer::GetPlaybackMode() const

@@ -43,7 +43,7 @@ public:
 	}
 
 	bool LoadVideo(ID3D11Device* device, const std::string& path, bool playAudio);
-	void Update(ID3D11DeviceContext* context, float deltaTime);
+	void Update(ID3D11DeviceContext* context);
 	void Reset(bool playNextVideo = false);
 
 	ImTextureID GetTextureID() const;
@@ -69,9 +69,9 @@ private:
 	void ResetAudio(bool playNextVideo = false);
 	void ResetImpl(bool playNextVideo = false);
 
-	using Lock = std::mutex;
-	using Locker = std::scoped_lock<Lock>;
-	using UniqueLocker = std::unique_lock<Lock>;
+	using Lock = std::shared_mutex;
+	using ReadLocker = std::scoped_lock<Lock>;
+	using WriteLocker = std::unique_lock<Lock>;
 
 	// members
 	std::string                     currentVideo;
@@ -79,13 +79,13 @@ private:
 	std::unique_ptr<ImGui::Texture> texture;
 	PLAYBACK_MODE                   playbackMode{ PLAYBACK_MODE::kLoop };
 	float                           targetFPS{ 30.0f };
-	float                           actualFPS{ 0.0f };
+	std::atomic<float>              actualFPS{ 0.0f };
 	std::uint32_t                   frameCount{ 0 };
 	float                           frameDuration{ 0.0f };
 	std::atomic<std::uint32_t>      readFrameCount{ 0 };
-	float                           elapsedTime{ 0.0f };
-	std::atomic<float>              updateTimer{ 0.0f };
+	std::atomic<float>              elapsedTime{ 0.0f };
 	cv::Mat                         videoFrame;
+	mutable Lock                    videoFrameLock;
 	ComPtr<IMFSourceReader>         audioReader{};
 	ComPtr<IMFSinkWriter>           audioWriter{};
 	ComPtr<IMFMediaSink>            mediaSink{};
@@ -93,7 +93,6 @@ private:
 	std::jthread                    videoThread;
 	std::jthread                    resetThread;
 	std::barrier<>                  startBarrier{ 2 };
-	mutable Lock                    frameLock;
 	bool                            audioLoaded{ false };
 	std::atomic<bool>               playing{ false };
 	std::atomic<bool>               looping{ false };

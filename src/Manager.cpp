@@ -74,7 +74,7 @@ void Manager::Update()
 {
 	if (auto renderer = RE::BSGraphics::Renderer::GetSingleton()) {
 		if (const auto context = reinterpret_cast<ID3D11DeviceContext*>(renderer->data.context)) {
-			videoPlayer.Update(context, ImGui::GetIO().DeltaTime);  // RE::BSTimer::GetSingleton()->realTimeDelta doesn't init properly until main menu loads
+			videoPlayer.Update(context);
 		}
 	}
 }
