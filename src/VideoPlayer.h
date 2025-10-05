@@ -62,7 +62,7 @@ private:
 	void RestartAudioThread();
 
 	bool LoadAudio(const std::string& path);
-	
+
 	void ResetAudio(bool playNextVideo = false);
 	void ResetImpl(bool playNextVideo = false);
 

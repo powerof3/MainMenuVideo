@@ -350,7 +350,7 @@ void VideoPlayer::ResetImpl(bool playNextVideo)
 	readFrameCount = 0;
 	elapsedTime = 0.0f;
 	updateTimer = 0.0f;
-	
+
 	{
 		Locker lock(frameLock);
 		videoFrame.release();
