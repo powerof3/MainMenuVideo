@@ -425,13 +425,13 @@ bool VideoPlayer::IsPlayingAudio() const
 
 void VideoPlayer::ShowDebugInfo()
 {
+	auto min = ImGui::GetItemRectMin();
+	ImGui::SetCursorScreenPos(min);
+	
 	if (IsTransitioning()) {
 		ImGui::Text("TRANSITIONING");
 		return;
 	}
-
-	auto min = ImGui::GetItemRectMin();
-	ImGui::SetCursorScreenPos(min);
 
 	ImGui::Text("%s", currentVideo.c_str());
 	ImGui::Text("\tElapsed Time: %.1f seconds", elapsedTime);
