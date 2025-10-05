@@ -14,11 +14,16 @@ public:
 	void Update();
 
 	void GetVideoList();
-	bool LoadVideo();
+
+	bool LoadRandomVideo();
+	bool LoadNextVideo();
+
 	bool IsPlayingVideo() const;
 	bool IsPlayingVideoAudio() const;
 
 private:
+	bool LoadRandomVideo(ID3D11Device* a_device, std::size_t numVideos);
+
 	EventResult ProcessEvent(const RE::MenuOpenCloseEvent* a_evn, RE::BSTEventSource<RE::MenuOpenCloseEvent>*) override;
 
 	// members

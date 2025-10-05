@@ -1,5 +1,7 @@
 #include "VideoPlayer.h"
 
+#include "Manager.h"
+
 ImGui::Texture::Texture(ID3D11Device* device, std::uint32_t a_width, std::uint32_t a_height, float a_scale) :
 	size(static_cast<float>(a_width), static_cast<float>(a_height)),
 	scale(a_scale)
@@ -42,6 +44,12 @@ void ImGui::Texture::Update(ID3D11DeviceContext* context, const cv::Mat& mat) co
 		}
 		context->Unmap(texture.Get(), 0);
 	}
+}
+
+void ImGui::Texture::SetDimensions(std::uint32_t a_width, std::uint32_t a_height, float a_scale)
+{
+	size = ImVec2(static_cast<float>(a_width), static_cast<float>(a_height));
+	scale = a_scale;
 }
 
 // https://stackoverflow.com/a/54946067
@@ -116,26 +124,41 @@ void VideoPlayer::CreateVideoThread()
 				startBarrier.arrive_and_wait();  // wait until both video+audio are ready
 			}
 
+			transitioning.store(false);
+			playing.store(true);
+
 			auto  startTime = std::chrono::steady_clock::now();
 			auto  lastDebugTime = startTime;
 			float localTimer = 0.0f;
 			bool  justReset = true;
 
-			auto force_reset_cap = [&]() {
-				readFrameCount = 0;
+			auto on_video_end = [&]() {
+				switch (playbackMode) {
+				case PLAYBACK_MODE::kPlayOnce:
+					Reset();
+					break;
+				case PLAYBACK_MODE::kPlayNext:
+					Reset(true);
+					break;
+				case PLAYBACK_MODE::kLoop:
+					{
+						readFrameCount.store(0);
 
-				cap.release();
-				bool ok = cap.open(currentVideo);
+						cap.release();
+						cap.open(currentVideo);
 
-				startTime = std::chrono::steady_clock::now();
-				lastDebugTime = startTime;
-				localTimer = 0.0f;
-				looping = true;
-				justReset = true;
+						startTime = std::chrono::steady_clock::now();
+						lastDebugTime = startTime;
+						localTimer = 0.0f;
+						looping.store(true);
+						justReset = true;
 
-				RestartAudioThread();
-
-				return ok;
+						RestartAudioThread();
+					}
+					break;
+				default:
+					std::unreachable();
+				}
 			};
 
 			while (!st.stop_requested()) {
@@ -178,14 +201,14 @@ void VideoPlayer::CreateVideoThread()
 					}
 					readFrameCount++;
 				} else {
-					force_reset_cap();
+					on_video_end();
 				}
 
 				auto now = std::chrono::steady_clock::now();
 				if (std::chrono::duration<float>(now - lastDebugTime).count() >= 0.1f) {
 					float totalElapsed = std::chrono::duration<float>(now - startTime).count();
 					elapsedTime = totalElapsed;
-					actualFPS = readFrameCount / totalElapsed;
+					actualFPS = readFrameCount.load() / totalElapsed;
 					lastDebugTime = now;
 				}
 			}
@@ -197,7 +220,7 @@ void VideoPlayer::CreateAudioThread()
 {
 	if (audioLoaded && !audioThread.joinable()) {
 		audioThread = std::jthread([this](std::stop_token st) {
-			if (!looping) {
+			if (!looping.load()) {
 				startBarrier.arrive_and_wait();
 			}
 			audioWriter->BeginWriting();
@@ -247,7 +270,7 @@ bool VideoPlayer::LoadVideo(ID3D11Device* device, const std::string& path, bool 
 
 	cap.open(path, cv::CAP_MSMF, params);
 	if (!cap.isOpened()) {
-		logger::warn("Couldn't open {}", path);
+		logger::warn("Couldn't load {}", path);
 		return false;
 	}
 
@@ -265,19 +288,22 @@ bool VideoPlayer::LoadVideo(ID3D11Device* device, const std::string& path, bool 
 	if (auto gameWidth = RE::BSGraphics::Renderer::GetScreenSize().width; gameWidth != videoWidth) {
 		scale = static_cast<float>(gameWidth) / videoWidth;
 		auto newVideoHeight = static_cast<std::uint32_t>(videoHeight * scale);
-		logger::info("\tScaling to fit game resolution({}x{}->{}x{} ({}X))", path, videoWidth, videoHeight, gameWidth, newVideoHeight, scale);
+		logger::info("\tScaling to fit game resolution({}x{}->{}x{} ({}X))", videoWidth, videoHeight, gameWidth, newVideoHeight, scale);
 		videoWidth = gameWidth;
 		videoHeight = newVideoHeight;
 	}
 
-	texture = std::make_unique<ImGui::Texture>(device, videoWidth, videoHeight, scale);
-	if (!texture || !texture->texture || !texture->srView) {
-		cap.release();
-		return false;
+	if (!texture) {
+		texture = std::make_unique<ImGui::Texture>(device, videoWidth, videoHeight, scale);
+		if (!texture || !texture->texture || !texture->srView) {
+			cap.release();
+			return false;
+		}
+	} else {
+		texture->SetDimensions(videoWidth, videoHeight, scale);
 	}
 
 	audioLoaded = playAudio ? LoadAudio(path) : false;
-	playing = true;
 
 	CreateAudioThread();
 	CreateVideoThread();
@@ -302,11 +328,13 @@ void VideoPlayer::Update(ID3D11DeviceContext* context, float deltaTime)
 	}
 }
 
-void VideoPlayer::ResetAudio()
+void VideoPlayer::ResetAudio(bool playNextVideo)
 {
 	audioReader = nullptr;
 	if (audioWriter) {
-		audioWriter->Flush(0);
+		if (!playNextVideo) {
+			audioWriter->Flush(0);
+		}
 		audioWriter->Finalize();
 		audioWriter = nullptr;
 	}
@@ -316,11 +344,13 @@ void VideoPlayer::ResetAudio()
 	}
 }
 
-void VideoPlayer::ResetImpl()
+void VideoPlayer::ResetImpl(bool playNextVideo)
 {
 	videoThread = {};
 	readFrameCount = 0;
+	elapsedTime = 0.0f;
 	updateTimer = 0.0f;
+	
 	{
 		Locker lock(frameLock);
 		videoFrame.release();
@@ -328,26 +358,38 @@ void VideoPlayer::ResetImpl()
 
 	audioThread = {};
 	if (audioLoaded) {
-		ResetAudio();
+		ResetAudio(playNextVideo);
 		audioLoaded = false;
 	}
 
-	texture.reset();
+	if (!playNextVideo) {
+		texture.reset();
+	}
 	cap.release();
 
-	looping = false;
-	resetting = false;
-	playing = false;
+	looping.store(false);
+	resetting.store(false);
+	playing.store(false);
+
+	if (playNextVideo) {
+		if (!Manager::GetSingleton()->LoadNextVideo()) {
+			transitioning.store(false);
+		}
+	}
 }
 
-void VideoPlayer::Reset()
+void VideoPlayer::Reset(bool playNextVideo)
 {
 	if (!IsPlaying() || resetting.exchange(true)) {
 		return;
 	}
 
-	resetThread = std::jthread([this](std::stop_token) {
-		ResetImpl();
+	if (playNextVideo) {
+		transitioning.store(true);
+	}
+
+	resetThread = std::jthread([this, playNextVideo](std::stop_token) {
+		ResetImpl(playNextVideo);
 	});
 }
 
@@ -358,7 +400,7 @@ ImTextureID VideoPlayer::GetTextureID() const
 
 ImVec2 VideoPlayer::GetNativeSize() const
 {
-	return texture ? texture->size : ImVec2{ 0.0f, 0.0f };
+	return texture ? texture->size : ImGui::GetIO().DisplaySize;
 }
 
 bool VideoPlayer::IsInitialized() const
@@ -368,7 +410,12 @@ bool VideoPlayer::IsInitialized() const
 
 bool VideoPlayer::IsPlaying() const
 {
-	return playing.load() && !resetting.load();
+	return (playing.load() && !resetting.load()) || IsTransitioning();
+}
+
+bool VideoPlayer::IsTransitioning() const
+{
+	return transitioning.load();
 }
 
 bool VideoPlayer::IsPlayingAudio() const
@@ -378,11 +425,27 @@ bool VideoPlayer::IsPlayingAudio() const
 
 void VideoPlayer::ShowDebugInfo()
 {
+	if (IsTransitioning()) {
+		ImGui::Text("TRANSITIONING");
+		return;
+	}
+
 	auto min = ImGui::GetItemRectMin();
 	ImGui::SetCursorScreenPos(min);
 
-	ImGui::Text("Elapsed Time: %.1f seconds", elapsedTime);
-	ImGui::Text("Frames Processed: %u/%u", readFrameCount.load(), frameCount);
-	ImGui::Text("Target FPS: %.1f", targetFPS);
-	ImGui::Text("Actual FPS: %.1f", actualFPS);
+	ImGui::Text("%s", currentVideo.c_str());
+	ImGui::Text("\tElapsed Time: %.1f seconds", elapsedTime);
+	ImGui::Text("\tFrames Processed: %u/%u", readFrameCount.load(), frameCount);
+	ImGui::Text("\tTarget FPS: %.1f", targetFPS);
+	ImGui::Text("\tActual FPS: %.1f", actualFPS);
+}
+
+PLAYBACK_MODE VideoPlayer::GetPlaybackMode() const
+{
+	return playbackMode;
+}
+
+void VideoPlayer::SetPlaybackMode(PLAYBACK_MODE a_mode)
+{
+	playbackMode = a_mode;
 }
