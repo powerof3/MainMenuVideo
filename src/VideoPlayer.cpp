@@ -161,7 +161,11 @@ void VideoPlayer::CreateVideoThread()
 				}
 			};
 
-			while (!st.stop_requested()) {
+			while (true) {
+				if (st.stop_requested()) {
+					break;
+				}
+				
 				float dt = updateTimer.exchange(0.0f, std::memory_order_acq_rel);
 				localTimer += dt;
 
@@ -225,7 +229,11 @@ void VideoPlayer::CreateAudioThread()
 			}
 			audioWriter->BeginWriting();
 
-			while (!st.stop_requested()) {
+			while (true) {
+				if (st.stop_requested()) {
+					break;
+				}
+
 				ComPtr<IMFSample> sample;
 				DWORD             streamFlags = 0;
 				MFTIME            timestamp = 0;
@@ -346,7 +354,18 @@ void VideoPlayer::ResetAudio(bool playNextVideo)
 
 void VideoPlayer::ResetImpl(bool playNextVideo)
 {
-	videoThread = {};
+	looping.store(false);
+	playing.store(false);
+
+	if (videoThread.joinable()) {
+		videoThread.request_stop();
+		videoThread.join();
+	}
+	if (audioThread.joinable()) {
+		audioThread.request_stop();
+		audioThread.join();
+	}
+
 	readFrameCount = 0;
 	elapsedTime = 0.0f;
 	updateTimer = 0.0f;
@@ -356,7 +375,6 @@ void VideoPlayer::ResetImpl(bool playNextVideo)
 		videoFrame.release();
 	}
 
-	audioThread = {};
 	if (audioLoaded) {
 		ResetAudio(playNextVideo);
 		audioLoaded = false;
@@ -367,15 +385,11 @@ void VideoPlayer::ResetImpl(bool playNextVideo)
 	}
 	cap.release();
 
-	looping.store(false);
-	resetting.store(false);
-	playing.store(false);
-
-	if (playNextVideo) {
-		if (!Manager::GetSingleton()->LoadNextVideo()) {
-			transitioning.store(false);
-		}
+	if (playNextVideo && !Manager::GetSingleton()->LoadNextVideo()) {
+		transitioning.store(false);
 	}
+
+	resetting.store(false);
 }
 
 void VideoPlayer::Reset(bool playNextVideo)
@@ -391,6 +405,7 @@ void VideoPlayer::Reset(bool playNextVideo)
 	resetThread = std::jthread([this, playNextVideo](std::stop_token) {
 		ResetImpl(playNextVideo);
 	});
+	resetThread.detach();
 }
 
 ImTextureID VideoPlayer::GetTextureID() const

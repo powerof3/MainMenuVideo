@@ -35,7 +35,10 @@ public:
 		if (resetting.exchange(true) == false) {
 			ResetImpl();
 		} else {
-			resetThread.request_stop();
+			if (resetThread.joinable()) {
+				resetThread.request_stop();
+				resetThread.join();
+			}
 		}
 	}
 
@@ -68,6 +71,7 @@ private:
 
 	using Lock = std::mutex;
 	using Locker = std::scoped_lock<Lock>;
+	using UniqueLocker = std::unique_lock<Lock>;
 
 	// members
 	std::string                     currentVideo;
