@@ -32,7 +32,6 @@ private:
 	VideoPlayer                        videoPlayer;
 	bool                               firstBoot{ true };
 	bool                               mainMenuClosed{ false };
-	bool                               showBackground{ true };
 	bool                               showDebugInfo{ false };
 	bool                               playVideoAudio{ true };
 };

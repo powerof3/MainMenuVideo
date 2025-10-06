@@ -39,13 +39,12 @@ void Manager::LoadSettings()
 
 	ini.LoadFile(path);
 
-	ini::get_value(ini, showDebugInfo, "Settings", "bDebugStats", ";Display video stats including elapsed time and frame rate");
-	ini::get_value(ini, showBackground, "Settings", "bDrawSolidBackground", ";Draw a solid black background behind the video to hide main menu logo and other elements");
-	ini::get_value(ini, playVideoAudio, "Settings", "bPlayAudio", ";Replace main menu music with the video's audio track");
-
 	PLAYBACK_MODE mode{ PLAYBACK_MODE::kLoop };
 	ini::get_value(ini, mode, "Settings", "iPlaybackMode", ";0 - Play once, 1 - Play next video, 2 - Loop current video");
 	videoPlayer.SetPlaybackMode(mode);
+
+	ini::get_value(ini, playVideoAudio, "Settings", "bPlayAudio", ";Replace main menu music with the video's audio track");
+	ini::get_value(ini, showDebugInfo, "Settings", "bDebugStats", ";Display video stats including elapsed time and frame rate");
 
 	(void)ini.SaveFile(path);
 }
@@ -61,7 +60,9 @@ void Manager::Draw()
 
 	ImGui::Begin("##MainMenuVideo", nullptr, ImGuiWindowFlags_NoInputs | ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_NoBackground);
 	{
-		ImGui::GetBackgroundDrawList()->AddRectFilled(ImVec2(0, 0), screenSize, IM_COL32_BLACK);
+		if (videoSize != screenSize) {
+			ImGui::GetBackgroundDrawList()->AddRectFilled(ImVec2(0, 0), screenSize, IM_COL32_BLACK);
+		}
 		ImGui::Image(videoPlayer.GetTextureID(), videoSize);
 		if (showDebugInfo) {
 			videoPlayer.ShowDebugInfo();
