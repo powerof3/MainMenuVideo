@@ -376,7 +376,9 @@ void VideoPlayer::ResetImpl(bool playNextVideo)
 
 	if (audioLoaded) {
 		ResetAudio(playNextVideo);
-		audioLoaded = false;
+		if (!playNextVideo) {
+			audioLoaded = false;
+		}
 	}
 
 	if (!playNextVideo) {
@@ -434,7 +436,7 @@ bool VideoPlayer::IsTransitioning() const
 
 bool VideoPlayer::IsPlayingAudio() const
 {
-	return IsPlaying() && audioThread.joinable();
+	return IsPlaying() && audioLoaded;
 }
 
 void VideoPlayer::ShowDebugInfo()
