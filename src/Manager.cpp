@@ -24,10 +24,19 @@ void Manager::Register()
 	}
 
 	RE::UI::GetSingleton()->AddEventSink<RE::MenuOpenCloseEvent>(this);
+	if (auto scriptEventHolder = RE::ScriptEventSourceHolder::GetSingleton()) {
+		scriptEventHolder->AddEventSink<RE::TESDeathEvent>(this);
+	}
 
 	SKSE::AllocTrampoline(42);
 	ImGui::Renderer::Install();
 	Hooks::Install();
+}
+
+void Manager::CompatibilityCheck()
+{
+	heyYouYoureFinallyAwake = GetModuleHandleA("po3_HeyYouYoureFinallyAwake.dll") != nullptr;
+	logger::info("po3_HeyYoureFinallyAwake.dll installed : {}", heyYouYoureFinallyAwake);
 }
 
 void Manager::LoadSettings()
@@ -151,6 +160,7 @@ EventResult Manager::ProcessEvent(const RE::MenuOpenCloseEvent* a_evn, RE::BSTEv
 		if (a_evn->opening) {
 			if (firstBoot) {
 				firstBoot = false;
+				timerRunning = true;
 				timer.start();
 				LoadNextVideo();
 			} else if (mainMenuClosed) {
@@ -161,15 +171,32 @@ EventResult Manager::ProcessEvent(const RE::MenuOpenCloseEvent* a_evn, RE::BSTEv
 		}
 	} else if (menuName == RE::MainMenu::MENU_NAME) {
 		mainMenuClosed = !a_evn->opening;
-		if (a_evn->opening) {
+		if (a_evn->opening && timerRunning) {
 			timer.stop();
 			logger::info("Loading time: {}", timer.duration());
 		}
 	} else if (menuName == RE::FaderMenu::MENU_NAME) {
 		if (a_evn->opening && RE::Main::GetSingleton()->resetGame) {
+			if (playerDied && heyYouYoureFinallyAwake) {
+				playerDied = false;
+				return EventResult::kContinue;
+			}
 			LoadNextVideo();  // game -> quit to main menu
 		}
 	}
 
+	return EventResult::kContinue;
+}
+
+EventResult Manager::ProcessEvent(const RE::TESDeathEvent* a_evn, RE::BSTEventSource<RE::TESDeathEvent>*)
+{
+	if (!a_evn || !a_evn->actorDying || !a_evn->actorDying->IsPlayerRef() || !a_evn->dead) {
+		return EventResult::kContinue;
+	}
+
+	if (heyYouYoureFinallyAwake) {
+		playerDied = true;
+	}
+	
 	return EventResult::kContinue;
 }

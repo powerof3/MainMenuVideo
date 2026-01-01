@@ -5,6 +5,9 @@ void OnInit(SKSE::MessagingInterface::Message* a_msg)
 	if (a_msg->type == SKSE::MessagingInterface::kPostLoad) {
 		logger::info("{:*^30}", "POST LOAD");
 		Manager::GetSingleton()->Register();
+	} else if (a_msg->type == SKSE::MessagingInterface::kPostPostLoad) {
+		logger::info("{:*^30}", "POST POST LOADED");
+		Manager::GetSingleton()->CompatibilityCheck();
 	}
 }
 
