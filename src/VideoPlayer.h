@@ -9,7 +9,6 @@ namespace ImGui
 		~Texture() = default;
 
 		void Update(ID3D11DeviceContext* context, const cv::Mat& frame) const;
-		void SetDimensions(std::uint32_t a_width, std::uint32_t a_height, float a_scale);
 
 		// members
 		ImVec2                           size{ 0.0f, 0.0f };

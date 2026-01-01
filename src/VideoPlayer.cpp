@@ -46,12 +46,6 @@ void ImGui::Texture::Update(ID3D11DeviceContext* context, const cv::Mat& mat) co
 	}
 }
 
-void ImGui::Texture::SetDimensions(std::uint32_t a_width, std::uint32_t a_height, float a_scale)
-{
-	size = ImVec2(static_cast<float>(a_width), static_cast<float>(a_height));
-	scale = a_scale;
-}
-
 // https://stackoverflow.com/a/54946067
 // convert video to use MF? later
 bool VideoPlayer::LoadAudio(const std::string& path)
@@ -295,6 +289,7 @@ bool VideoPlayer::LoadVideo(ID3D11Device* device, const std::string& path, bool 
 
 	cap.open(path, cv::CAP_MSMF, params);
 	if (!cap.isOpened()) {
+		currentVideo.clear();
 		logger::warn("Couldn't load {}", path);
 		return false;
 	}
@@ -318,14 +313,10 @@ bool VideoPlayer::LoadVideo(ID3D11Device* device, const std::string& path, bool 
 		videoHeight = newVideoHeight;
 	}
 
-	if (!texture) {
-		texture = std::make_unique<ImGui::Texture>(device, videoWidth, videoHeight, scale);
-		if (!texture || !texture->texture || !texture->srView) {
-			cap.release();
-			return false;
-		}
-	} else {
-		texture->SetDimensions(videoWidth, videoHeight, scale);
+	texture = std::make_unique<ImGui::Texture>(device, videoWidth, videoHeight, scale);
+	if (!texture || !texture->texture || !texture->srView) {
+		cap.release();
+		return false;
 	}
 
 	audioLoaded = playAudio ? LoadAudio(path) : false;
