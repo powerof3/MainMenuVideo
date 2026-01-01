@@ -13,11 +13,11 @@
     {
       "name": "opencv4",
       "default-features": false,
-      "features": [ "fs", "intrinsics", "msmf", "thread" ]
+      "features": [ "fs", "intrinsics", "ffmpeg", "thread" ]
     },
     "rsm-binary-io",
     "spdlog",
     "xbyak"
   ],
-  "builtin-baseline": "2e6fcc44573d091af0321f99c89b212997a76f1f"
+  "builtin-baseline": "14bb451131ccf6be50a63a8d9dfe7980e46b5958"
 }

@@ -50,6 +50,10 @@ void ImGui::Texture::Update(ID3D11DeviceContext* context, const cv::Mat& mat) co
 // convert video to use MF? later
 bool VideoPlayer::LoadAudio(const std::string& path)
 {
+	if (!audioInitialized) {
+		return false;
+	}
+	
 	HRESULT hr = MFCreateSourceReaderFromURL(stl::utf8_to_utf16(path)->c_str(), nullptr, &audioReader);
 	if (SUCCEEDED(hr)) {  // Select only the audio stream
 		hr = audioReader->SetStreamSelection((DWORD)MF_SOURCE_READER_ALL_STREAMS, FALSE);
@@ -112,162 +116,153 @@ bool VideoPlayer::LoadAudio(const std::string& path)
 
 void VideoPlayer::CreateVideoThread()
 {
-	if (!videoThread.joinable()) {
-		videoThread = std::jthread([this](std::stop_token st) {
-			if (audioLoaded) {
-				startBarrier.arrive_and_wait();  // wait until both video+audio are ready
+	if (videoThread.joinable()) {
+		return;
+	}
+
+	videoThread = std::jthread([this](std::stop_token st) {
+		if (audioLoaded) {
+			startBarrier.arrive_and_wait();  // wait until both video+audio are ready
+		}
+		transitioning.store(false);
+		playing.store(true);
+
+		time_point frameStartTime = clock::now();
+		time_point playbackStart = frameStartTime;
+		time_point debugUpdateInfoTime = frameStartTime;
+
+		cv::Mat frame;
+		frame.create(videoHeight, videoWidth, CV_8UC4);
+		cv::Mat processedFrame;
+		processedFrame.create(videoHeight, videoWidth, CV_8UC4);
+
+		const auto needScaling = texture->scale != 1.0f;
+		const auto interpolation = texture->scale > 1.0f ? cv::INTER_LINEAR : cv::INTER_AREA;
+
+		auto restart_loop = [&]() {
+			readFrameCount.store(0);
+			if (!cap.set(cv::CAP_PROP_POS_FRAMES, 0)) {
+				cap.release();
+				cap.open(currentVideo);
 			}
-			transitioning.store(false);
-			playing.store(true);
+			RestartAudioThread();
+			if (audioLoaded) {
+				startBarrier.arrive_and_wait();
+			}
+			// Reset timing for new loop
+			frameStartTime = clock::now();
+			playbackStart = frameStartTime;
+			debugUpdateInfoTime = frameStartTime;
+		};
 
-			using clock = std::chrono::steady_clock;
-			using duration = std::chrono::duration<double>;
-			using time_point = std::chrono::time_point<clock, duration>;
+		while (!st.stop_requested()) {
+			const auto now = clock::now();
+			const auto elapsed = now - frameStartTime;
 
-			const auto frameDuration = duration(1.0 / targetFPS);
-			const auto debugUpdateInterval = duration(0.1);  // 0.1s
+			if (elapsed < frameDuration) {
+				const auto sleepDuration = frameDuration - elapsed;
+				if (sleepDuration > std::chrono::milliseconds(0)) {
+					std::this_thread::sleep_for(sleepDuration);
+				}
+				continue;
+			}
 
-			time_point frameStartTime = clock::now();
-			time_point playbackStart = frameStartTime;
-			time_point debugUpdateInfoTime = frameStartTime;
-
-			cv::Mat frame;
-			cv::Mat processedFrame;
-			bool    started = true;
-
-			auto on_video_end = [&]() {
+			if (!cap.read(frame) || frame.empty()) {
 				switch (playbackMode) {
 				case PLAYBACK_MODE::kPlayOnce:
 					Reset();
-					break;
+					return;
 				case PLAYBACK_MODE::kPlayNext:
 					Reset(true);
-					break;
+					return;
 				case PLAYBACK_MODE::kLoop:
-					{
-						readFrameCount.store(0);
-						cap.release();
-						cap.open(currentVideo);
-						RestartAudioThread();
-						if (audioLoaded) {
-							startBarrier.arrive_and_wait();
-						}
-						// Reset timing for new loop
-						frameStartTime = clock::now();
-						playbackStart = frameStartTime;
-						debugUpdateInfoTime = frameStartTime;
-						started = true;
-					}
-					break;
+					restart_loop();
+					continue;
 				default:
 					std::unreachable();
 				}
-			};
-
-			while (!st.stop_requested()) {
-				const auto now = clock::now();
-				const auto elapsed = now - frameStartTime;
-
-				if (!started && elapsed < frameDuration) {
-					const auto sleepDuration = frameDuration - elapsed;
-					if (sleepDuration > std::chrono::milliseconds(0)) {
-						std::this_thread::sleep_for(sleepDuration);
-					}
-					continue;
-				}
-
-				started = false;
-
-				if (cap.read(frame) && !frame.empty()) {
-					if (frame.channels() == 3) {
-						cv::cvtColor(frame, processedFrame, cv::COLOR_BGR2BGRA);
-					} else if (frame.channels() == 4) {
-						processedFrame = frame.clone();
-					} else {
-						frameStartTime += frameDuration;
-						continue;
-					}
-					if (texture->scale != 1.0f) {
-						cv::resize(processedFrame, processedFrame, cv::Size(), texture->scale, texture->scale, texture->scale > 1.0f ? cv::INTER_CUBIC : cv::INTER_AREA);
-					}
-					{
-						WriteLocker lock(videoFrameLock);
-						videoFrame = std::move(processedFrame);
-					}
-					readFrameCount.fetch_add(1, std::memory_order_relaxed);
-				} else {
-					on_video_end();
-					continue;
-				}
-
-				started = false;
-				frameStartTime += frameDuration;
-
-				if (now - frameStartTime > frameDuration * 2) {
-					const auto expectedElapsed = readFrameCount.load(std::memory_order_relaxed) * frameDuration;
-					frameStartTime = playbackStart + expectedElapsed;
-				}
-
-				if (now - debugUpdateInfoTime >= debugUpdateInterval) {
-					const auto totalElapsed = duration(now - playbackStart).count();
-					const auto frameCount = readFrameCount.load(std::memory_order_relaxed);
-					elapsedTime = static_cast<float>(totalElapsed);
-					actualFPS = static_cast<float>(frameCount / totalElapsed);
-					debugUpdateInfoTime = now;
-				}
 			}
-		});
-	}
+
+			const auto channels = frame.channels();
+			if (channels == 3) {
+				cv::cvtColor(frame, processedFrame, cv::COLOR_BGR2BGRA);
+			} else if (channels == 4) {
+				frame.copyTo(processedFrame);
+			} else {
+				frameStartTime += frameDuration;
+				continue;
+			}
+			if (needScaling) {
+				cv::resize(processedFrame, processedFrame, cv::Size(), texture->scale, texture->scale, interpolation);
+			}
+			{
+				WriteLocker lock(videoFrameLock);
+				videoFrame = processedFrame;
+			}
+
+			readFrameCount.fetch_add(1, std::memory_order_relaxed);
+			frameStartTime += frameDuration;
+
+			if (now - frameStartTime > frameDuration * 2) {
+				const auto expectedElapsed = readFrameCount.load(std::memory_order_relaxed) * frameDuration;
+				frameStartTime = playbackStart + expectedElapsed;
+			}
+
+			if (now - debugUpdateInfoTime >= debugUpdateInterval) {
+				const auto totalElapsed = duration(now - playbackStart).count();
+				const auto frameCount = readFrameCount.load(std::memory_order_relaxed);
+				elapsedTime = static_cast<float>(totalElapsed);
+				actualFPS = static_cast<float>(frameCount / totalElapsed);
+				debugUpdateInfoTime = now;
+			}
+		}
+	});
 }
 
 void VideoPlayer::Update(ID3D11DeviceContext* context)
 {
-	cv::Mat frameCopy;
-	{
-		ReadLocker lock(videoFrameLock);
-		if (!videoFrame.empty()) {
-			frameCopy = videoFrame.clone();
-		}
+	if (!texture) {
+		return;
 	}
 
-	if (!frameCopy.empty() && texture) {
-		texture->Update(context, frameCopy);
+	ReadLocker lock(videoFrameLock);
+	if (!videoFrame.empty()) {
+		texture->Update(context, videoFrame);
 	}
 }
 
 void VideoPlayer::CreateAudioThread()
 {
-	if (audioLoaded && !audioThread.joinable()) {
-		audioThread = std::jthread([this](std::stop_token st) {
-			if (!looping.load()) {
-				startBarrier.arrive_and_wait();
-			}
-			audioWriter->BeginWriting();
-
-			while (!st.stop_requested()) {
-				ComPtr<IMFSample> sample;
-				DWORD             streamFlags = 0;
-				MFTIME            timestamp = 0;
-
-				HRESULT hr = audioReader->ReadSample((DWORD)MF_SOURCE_READER_FIRST_AUDIO_STREAM, 0, nullptr, &streamFlags, &timestamp, &sample);
-				if (FAILED(hr)) {
-					break;
-				}
-
-				if (streamFlags & MF_SOURCE_READERF_ENDOFSTREAM) {
-					continue;
-				}
-
-				if (streamFlags & MF_SOURCE_READERF_STREAMTICK) {
-					audioWriter->SendStreamTick(0, timestamp);
-				}
-
-				if (sample) {
-					audioWriter->WriteSample(0, sample.Get());
-				}
-			}
-		});
+	if (!audioLoaded || audioThread.joinable()) {
+		return;
 	}
+
+	audioThread = std::jthread([this](std::stop_token st) {
+		startBarrier.arrive_and_wait();
+		audioWriter->BeginWriting();
+
+		ComPtr<IMFSample> sample;
+		DWORD             streamFlags = 0;
+		MFTIME            timestamp = 0;
+		constexpr DWORD   audioStreamIndex = static_cast<DWORD>(MF_SOURCE_READER_FIRST_AUDIO_STREAM);
+
+		while (!st.stop_requested()) {
+			sample.Reset();
+
+			HRESULT hr = audioReader->ReadSample(audioStreamIndex, 0, nullptr, &streamFlags, &timestamp, &sample);
+			if (FAILED(hr) || streamFlags & MF_SOURCE_READERF_ENDOFSTREAM) {
+				break;
+			}
+
+			if (streamFlags & MF_SOURCE_READERF_STREAMTICK) {
+				audioWriter->SendStreamTick(0, timestamp);
+			}
+
+			if (sample) {
+				audioWriter->WriteSample(0, sample.Get());
+			}
+		}
+	});
 }
 
 void VideoPlayer::RestartAudioThread()
@@ -284,10 +279,10 @@ bool VideoPlayer::LoadVideo(ID3D11Device* device, const std::string& path, bool 
 {
 	static std::vector<std::int32_t> params{
 		cv::CAP_PROP_HW_ACCELERATION,
-		cv::VIDEO_ACCELERATION_D3D11
+		cv::VIDEO_ACCELERATION_ANY
 	};
 
-	cap.open(path, cv::CAP_MSMF, params);
+	cap.open(path, cv::CAP_FFMPEG, params);
 	if (!cap.isOpened()) {
 		currentVideo.clear();
 		logger::warn("Couldn't load {}", path);
@@ -296,11 +291,11 @@ bool VideoPlayer::LoadVideo(ID3D11Device* device, const std::string& path, bool 
 
 	currentVideo = path;
 
-	auto videoWidth = static_cast<std::uint32_t>(cap.get(cv::CAP_PROP_FRAME_WIDTH));
-	auto videoHeight = static_cast<std::uint32_t>(cap.get(cv::CAP_PROP_FRAME_HEIGHT));
+	videoWidth = static_cast<std::uint32_t>(cap.get(cv::CAP_PROP_FRAME_WIDTH));
+	videoHeight = static_cast<std::uint32_t>(cap.get(cv::CAP_PROP_FRAME_HEIGHT));
 	frameCount = static_cast<std::uint32_t>(cap.get(cv::CAP_PROP_FRAME_COUNT));
 	targetFPS = static_cast<float>(cap.get(cv::CAP_PROP_FPS));
-	frameDuration = targetFPS > 0.0f ? (1.0f / targetFPS) : 0.033f;
+	frameDuration = targetFPS > 0.0f ? duration(1.0f / targetFPS) : duration(0.0333);
 
 	logger::info("Loading {} ({}x{}|{} FPS|{} frames)", path, videoWidth, videoHeight, targetFPS, frameCount);
 
@@ -345,7 +340,6 @@ void VideoPlayer::ResetAudio(bool playNextVideo)
 
 void VideoPlayer::ResetImpl(bool playNextVideo)
 {
-	looping.store(false);
 	playing.store(false);
 
 	if (videoThread.joinable()) {
