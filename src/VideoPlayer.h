@@ -101,7 +101,7 @@ private:
 	duration                        frameDuration{ 0.0 };
 	std::atomic<std::uint32_t>      readFrameCount{ 0 };
 	std::atomic<float>              elapsedTime{ 0.0f };
-	duration                        debugUpdateInterval{ 1.0 };
+	duration                        debugUpdateInterval{ 0.1 };
 	cv::Mat                         videoFrame;
 	mutable Lock                    videoFrameLock;
 	ComPtr<IMFSourceReader>         audioReader{};

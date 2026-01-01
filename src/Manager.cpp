@@ -78,66 +78,27 @@ void Manager::Update()
 	}
 }
 
-bool Manager::LoadRandomVideo(ID3D11Device* a_device, std::size_t numVideos)
-{
-	static clib_util::RNG    rng{};
-	std::vector<std::size_t> candidates;
-
-	for (std::size_t i = 0; i < numVideos; ++i) {
-		if (i != selectedIndex) {
-			candidates.push_back(i);
-		}
-	}
-
-	std::ranges::shuffle(candidates, rng);
-
-	for (auto nextIndex : candidates) {
-		if (videoPlayer.LoadVideo(a_device, videoPaths[nextIndex].string(), playVideoAudio)) {
-			selectedIndex = nextIndex;
-			return true;
-		}
-	}
-
-	return false;
-}
-
-bool Manager::LoadRandomVideo()
+bool Manager::LoadNextVideo()
 {
 	if (videoPaths.empty()) {
 		return false;
 	}
-
 	if (auto renderer = RE::BSGraphics::Renderer::GetSingleton()) {
 		if (auto device = reinterpret_cast<ID3D11Device*>(renderer->data.forwarder)) {
-			const std::size_t numVideos = videoPaths.size();
+			const std::uint32_t numVideos = static_cast<std::uint32_t>(videoPaths.size());
 
-			if (numVideos > 1 && LoadRandomVideo(device, numVideos)) {
-				return true;
+			if (selectedIndex >= numVideos) {
+				std::random_device rd;
+				std::mt19937       gen(rd());
+				std::ranges::shuffle(videoPaths, gen);
+				selectedIndex = 0;
 			}
 
-			return videoPlayer.LoadVideo(device, videoPaths[selectedIndex].string(), playVideoAudio);
+			videoPlayer.LoadVideo(device, videoPaths[selectedIndex].string(), playVideoAudio);
+			selectedIndex++;
+			return true;
 		}
 	}
-
-	return false;
-}
-
-bool Manager::LoadNextVideo()
-{
-	const std::size_t numVideos = videoPaths.size();
-
-	if (numVideos <= 1) {
-		return false;
-	}
-
-	if (auto renderer = RE::BSGraphics::Renderer::GetSingleton()) {
-		if (auto device = reinterpret_cast<ID3D11Device*>(renderer->data.forwarder)) {
-			if (LoadRandomVideo(device, numVideos)) {
-				return true;
-			}
-		}
-	}
-
 	return false;
 }
 
@@ -172,6 +133,10 @@ void Manager::GetVideoList()
 			videoPaths.push_back({ entry.path().string() });
 		}
 	}
+
+	std::random_device rd;
+	std::mt19937       gen(rd());
+	std::ranges::shuffle(videoPaths, gen);
 }
 
 EventResult Manager::ProcessEvent(const RE::MenuOpenCloseEvent* a_evn, RE::BSTEventSource<RE::MenuOpenCloseEvent>*)
@@ -187,7 +152,7 @@ EventResult Manager::ProcessEvent(const RE::MenuOpenCloseEvent* a_evn, RE::BSTEv
 			if (firstBoot) {
 				firstBoot = false;
 				timer.start();
-				LoadRandomVideo();
+				LoadNextVideo();
 			} else if (mainMenuClosed) {
 				if (videoPlayer.IsPlaying()) {
 					videoPlayer.Reset();  // main menu -> loading screen -> game
@@ -202,7 +167,7 @@ EventResult Manager::ProcessEvent(const RE::MenuOpenCloseEvent* a_evn, RE::BSTEv
 		}
 	} else if (menuName == RE::FaderMenu::MENU_NAME) {
 		if (a_evn->opening && RE::Main::GetSingleton()->resetGame) {
-			LoadRandomVideo();  // game -> quit to main menu
+			LoadNextVideo();  // game -> quit to main menu
 		}
 	}
 
