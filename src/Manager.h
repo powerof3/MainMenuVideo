@@ -34,4 +34,5 @@ private:
 	bool                               mainMenuClosed{ false };
 	bool                               showDebugInfo{ false };
 	bool                               playVideoAudio{ true };
+	Timer                              timer;
 };

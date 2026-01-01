@@ -182,18 +182,23 @@ EventResult Manager::ProcessEvent(const RE::MenuOpenCloseEvent* a_evn, RE::BSTEv
 
 	const auto& menuName = a_evn->menuName;
 
-	if (menuName == RE::MainMenu::MENU_NAME) {
-		mainMenuClosed = !a_evn->opening;
-	} else if (menuName == RE::LoadingMenu::MENU_NAME) {
+	if (menuName == RE::LoadingMenu::MENU_NAME) {
 		if (a_evn->opening) {
 			if (firstBoot) {
 				firstBoot = false;
+				timer.start();
 				LoadRandomVideo();
 			} else if (mainMenuClosed) {
 				if (videoPlayer.IsPlaying()) {
 					videoPlayer.Reset();  // main menu -> loading screen -> game
 				}
 			}
+		}
+	} else if (menuName == RE::MainMenu::MENU_NAME) {
+		mainMenuClosed = !a_evn->opening;
+		if (a_evn->opening) {
+			timer.stop();
+			logger::info("Loading time: {}", timer.duration());
 		}
 	} else if (menuName == RE::FaderMenu::MENU_NAME) {
 		if (a_evn->opening && RE::Main::GetSingleton()->resetGame) {
