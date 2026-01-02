@@ -83,7 +83,7 @@ void Manager::Update()
 	if (!IsPlayingVideo()) {
 		return;
 	}
-	
+
 	if (auto renderer = RE::BSGraphics::Renderer::GetSingleton()) {
 		if (const auto context = reinterpret_cast<ID3D11DeviceContext*>(renderer->data.context)) {
 			videoPlayer.Update(context);
@@ -201,6 +201,6 @@ EventResult Manager::ProcessEvent(const RE::TESDeathEvent* a_evn, RE::BSTEventSo
 	if (heyYouYoureFinallyAwake) {
 		playerDied = true;
 	}
-	
+
 	return EventResult::kContinue;
 }

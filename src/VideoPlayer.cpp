@@ -53,7 +53,7 @@ bool VideoPlayer::LoadAudio(const std::string& path)
 	if (!audioInitialized) {
 		return false;
 	}
-	
+
 	HRESULT hr = MFCreateSourceReaderFromURL(stl::utf8_to_utf16(path)->c_str(), nullptr, &audioReader);
 	if (SUCCEEDED(hr)) {  // Select only the audio stream
 		hr = audioReader->SetStreamSelection((DWORD)MF_SOURCE_READER_ALL_STREAMS, FALSE);
