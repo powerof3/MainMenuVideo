@@ -177,6 +177,7 @@ EventResult Manager::ProcessEvent(const RE::MenuOpenCloseEvent* a_evn, RE::BSTEv
 		mainMenuClosed = !a_evn->opening;
 		if (a_evn->opening && timerRunning) {
 			timer.stop();
+			timerRunning = false;
 			logger::info("Loading time: {}", timer.duration());
 		}
 	} else if (menuName == RE::FaderMenu::MENU_NAME) {
