@@ -266,10 +266,6 @@ void VideoPlayer::RestartAudioThread()
 
 bool VideoPlayer::LoadVideo(ID3D11Device* device, const std::string& path, bool playAudio)
 {
-	static std::vector<std::int32_t> params{
-
-	};
-
 	cap.open(path, cv::CAP_MSMF, { cv::CAP_PROP_HW_ACCELERATION, cv::VIDEO_ACCELERATION_ANY });
 	if (!cap.isOpened()) {
 		currentVideo.clear();
