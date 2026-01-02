@@ -30,7 +30,7 @@ class VideoPlayer
 public:
 	VideoPlayer()
 	{
-		auto hr = CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED);
+		auto hr = CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED | COINIT_DISABLE_OLE1DDE);
 		if (FAILED(hr)) {
 			return;
 		}
@@ -50,7 +50,9 @@ public:
 				resetThread.join();
 			}
 		}
-		MFShutdown();
+		if (audioInitialized) {
+			MFShutdown();
+		}
 	}
 
 	bool LoadVideo(ID3D11Device* device, const std::string& path, bool playAudio);
