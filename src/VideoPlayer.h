@@ -76,7 +76,7 @@ private:
 	using time_point = std::chrono::time_point<clock, duration>;
 
 	using Lock = std::shared_mutex;
-	using ReadLocker = std::scoped_lock<Lock>;
+	using ReadLocker = std::shared_lock<Lock>;
 	using WriteLocker = std::unique_lock<Lock>;
 
 	void CreateVideoThread();
