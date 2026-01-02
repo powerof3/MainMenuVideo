@@ -99,9 +99,7 @@ namespace ImGui::Renderer
 				return;
 			}
 
-			if (auto mgr = Manager::GetSingleton(); mgr->IsPlayingVideo()) {
-				mgr->Update();
-			}
+			Manager::GetSingleton()->Update();
 		}
 		static inline REL::Relocation<decltype(thunk)> func;
 	};

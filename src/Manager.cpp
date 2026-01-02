@@ -80,6 +80,10 @@ void Manager::Draw()
 
 void Manager::Update()
 {
+	if (!IsPlayingVideo()) {
+		return;
+	}
+	
 	if (auto renderer = RE::BSGraphics::Renderer::GetSingleton()) {
 		if (const auto context = reinterpret_cast<ID3D11DeviceContext*>(renderer->data.context)) {
 			videoPlayer.Update(context);
@@ -113,7 +117,7 @@ bool Manager::LoadNextVideo()
 
 bool Manager::IsPlayingVideo() const
 {
-	return videoPlayer.IsPlaying() || videoPlayer.IsTransitioning();
+	return videoPlayer.IsPlaying();
 }
 
 bool Manager::IsPlayingVideoAudio() const
