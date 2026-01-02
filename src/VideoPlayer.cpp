@@ -50,10 +50,6 @@ void ImGui::Texture::Update(ID3D11DeviceContext* context, const cv::Mat& mat) co
 // convert video to use MF? later
 bool VideoPlayer::LoadAudio(const std::string& path)
 {
-	if (!audioInitialized) {
-		return false;
-	}
-
 	HRESULT hr = MFCreateSourceReaderFromURL(stl::utf8_to_utf16(path)->c_str(), nullptr, &audioReader);
 	if (SUCCEEDED(hr)) {  // Select only the audio stream
 		hr = audioReader->SetStreamSelection((DWORD)MF_SOURCE_READER_ALL_STREAMS, FALSE);
@@ -141,10 +137,8 @@ void VideoPlayer::CreateVideoThread()
 
 		auto restart_loop = [&]() {
 			readFrameCount.store(0);
-			if (!cap.set(cv::CAP_PROP_POS_FRAMES, 0)) {
-				cap.release();
-				cap.open(currentVideo);
-			}
+			cap.release();
+			cap.open(currentVideo);
 			RestartAudioThread();
 			if (audioLoaded) {
 				startBarrier.arrive_and_wait();
@@ -197,16 +191,11 @@ void VideoPlayer::CreateVideoThread()
 			}
 			{
 				WriteLocker lock(videoFrameLock);
-				videoFrame = processedFrame;
+				processedFrame.copyTo(videoFrame);
 			}
 
 			readFrameCount.fetch_add(1, std::memory_order_relaxed);
 			frameStartTime += frameDuration;
-
-			if (now - frameStartTime > frameDuration * 2) {
-				const auto expectedElapsed = readFrameCount.load(std::memory_order_relaxed) * frameDuration;
-				frameStartTime = playbackStart + expectedElapsed;
-			}
 
 			if (now - debugUpdateInfoTime >= debugUpdateInterval) {
 				const auto totalElapsed = duration(now - playbackStart).count();
@@ -278,11 +267,10 @@ void VideoPlayer::RestartAudioThread()
 bool VideoPlayer::LoadVideo(ID3D11Device* device, const std::string& path, bool playAudio)
 {
 	static std::vector<std::int32_t> params{
-		cv::CAP_PROP_HW_ACCELERATION,
-		cv::VIDEO_ACCELERATION_ANY
+
 	};
 
-	cap.open(path, cv::CAP_FFMPEG, params);
+	cap.open(path, cv::CAP_MSMF, { cv::CAP_PROP_HW_ACCELERATION, cv::VIDEO_ACCELERATION_ANY });
 	if (!cap.isOpened()) {
 		currentVideo.clear();
 		logger::warn("Couldn't load {}", path);

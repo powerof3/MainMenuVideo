@@ -28,18 +28,7 @@ enum class PLAYBACK_MODE
 class VideoPlayer
 {
 public:
-	VideoPlayer()
-	{
-		auto hr = CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED | COINIT_DISABLE_OLE1DDE);
-		if (FAILED(hr)) {
-			return;
-		}
-		hr = MFStartup(MF_VERSION);
-		if (FAILED(hr)) {
-			return;
-		}
-		audioInitialized = true;
-	}
+	VideoPlayer() = default;
 	~VideoPlayer()
 	{
 		if (resetting.exchange(true) == false) {
@@ -49,9 +38,6 @@ public:
 				resetThread.request_stop();
 				resetThread.join();
 			}
-		}
-		if (audioInitialized) {
-			MFShutdown();
 		}
 	}
 
@@ -113,7 +99,6 @@ private:
 	std::jthread                    videoThread;
 	std::jthread                    resetThread;
 	std::barrier<>                  startBarrier{ 2 };
-	bool                            audioInitialized{ false };
 	bool                            audioLoaded{ false };
 	std::atomic<bool>               playing{ false };
 	std::atomic<bool>               resetting{ false };
