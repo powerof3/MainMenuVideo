@@ -54,9 +54,13 @@ public:
 	bool IsPlayingAudio() const;
 
 	void ShowDebugInfo();
+	void OnVolumeUpdate();
 
 	PLAYBACK_MODE GetPlaybackMode() const;
 	void          SetPlaybackMode(PLAYBACK_MODE a_mode);
+
+	void  IncrementVolume(float a_delta);
+	float GetVolume() const { return volume; }
 
 private:
 	using clock = std::chrono::steady_clock;
@@ -73,7 +77,7 @@ private:
 
 	bool LoadAudio(const std::string& path);
 
-	void ResetAudio(bool playNextVideo = false);
+	void ResetAudio();
 	void ResetImpl(bool playNextVideo = false);
 
 	// members
@@ -95,12 +99,18 @@ private:
 	ComPtr<IMFSourceReader>         audioReader{};
 	ComPtr<IMFSinkWriter>           audioWriter{};
 	ComPtr<IMFMediaSink>            mediaSink{};
+	ComPtr<IMFSimpleAudioVolume>    audioVolume{};
+	float                           volume{ 1.0f };
+	float                           displayVolume{ 100.0f };
+	time_point                      volumeDisplayStart{};
 	std::jthread                    audioThread;
 	std::jthread                    videoThread;
 	std::jthread                    resetThread;
 	std::barrier<>                  startBarrier{ 2 };
-	bool                            audioLoaded{ false };
+	std::atomic<bool>               audioLoaded{ false };
 	std::atomic<bool>               playing{ false };
 	std::atomic<bool>               resetting{ false };
 	std::atomic<bool>               transitioning{ false };
+
+	static constexpr duration volumeDisplayDuration{ 1.5 };
 };

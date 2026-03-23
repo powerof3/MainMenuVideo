@@ -90,6 +90,14 @@ bool VideoPlayer::LoadAudio(const std::string& path)
 												if (SUCCEEDED(hr)) {
 													hr = audioWriter->SetInputMediaType(0, inputType.Get(), nullptr);
 													if (SUCCEEDED(hr)) {
+														ComPtr<IMFGetService> service;
+														hr = mediaSink.As(&service);
+														if (SUCCEEDED(hr)) {
+															service->GetService(MR_POLICY_VOLUME_SERVICE, IID_PPV_ARGS(&audioVolume));
+														}
+														if (audioVolume) {
+															audioVolume->SetMasterVolume(volume);
+														}
 														return true;
 													}
 												}
@@ -117,6 +125,8 @@ void VideoPlayer::CreateVideoThread()
 	}
 
 	videoThread = std::jthread([this](std::stop_token st) {
+		SetThreadPriority(GetCurrentThread(), THREAD_PRIORITY_BELOW_NORMAL);
+
 		if (audioLoaded) {
 			startBarrier.arrive_and_wait();  // wait until both video+audio are ready
 		}
@@ -128,9 +138,7 @@ void VideoPlayer::CreateVideoThread()
 		time_point debugUpdateInfoTime = frameStartTime;
 
 		cv::Mat frame;
-		frame.create(videoHeight, videoWidth, CV_8UC4);
 		cv::Mat processedFrame;
-		processedFrame.create(videoHeight, videoWidth, CV_8UC4);
 
 		const auto needScaling = texture->scale != 1.0f;
 		const auto interpolation = texture->scale > 1.0f ? cv::INTER_LINEAR : cv::INTER_AREA;
@@ -138,7 +146,7 @@ void VideoPlayer::CreateVideoThread()
 		auto restart_loop = [&]() {
 			readFrameCount.store(0);
 			cap.release();
-			cap.open(currentVideo);
+			cap.open(currentVideo, cv::CAP_MSMF, { cv::CAP_PROP_HW_ACCELERATION, cv::VIDEO_ACCELERATION_ANY });
 			RestartAudioThread();
 			if (audioLoaded) {
 				startBarrier.arrive_and_wait();
@@ -181,7 +189,7 @@ void VideoPlayer::CreateVideoThread()
 			if (channels == 3) {
 				cv::cvtColor(frame, processedFrame, cv::COLOR_BGR2BGRA);
 			} else if (channels == 4) {
-				frame.copyTo(processedFrame);
+				processedFrame = frame;
 			} else {
 				frameStartTime += frameDuration;
 				continue;
@@ -191,7 +199,7 @@ void VideoPlayer::CreateVideoThread()
 			}
 			{
 				WriteLocker lock(videoFrameLock);
-				processedFrame.copyTo(videoFrame);
+				cv::swap(processedFrame, videoFrame);
 			}
 
 			readFrameCount.fetch_add(1, std::memory_order_relaxed);
@@ -214,10 +222,16 @@ void VideoPlayer::Update(ID3D11DeviceContext* context)
 		return;
 	}
 
-	ReadLocker lock(videoFrameLock);
-	if (!videoFrame.empty()) {
-		texture->Update(context, videoFrame);
+	cv::Mat localFrame;
+	{
+		ReadLocker lock(videoFrameLock);
+		if (videoFrame.empty()) {
+			return;
+		}
+		localFrame = videoFrame;
 	}
+
+	texture->Update(context, localFrame);
 }
 
 void VideoPlayer::CreateAudioThread()
@@ -227,6 +241,8 @@ void VideoPlayer::CreateAudioThread()
 	}
 
 	audioThread = std::jthread([this](std::stop_token st) {
+		SetThreadPriority(GetCurrentThread(), THREAD_PRIORITY_BELOW_NORMAL);
+
 		startBarrier.arrive_and_wait();
 		audioWriter->BeginWriting();
 
@@ -283,12 +299,17 @@ bool VideoPlayer::LoadVideo(ID3D11Device* device, const std::string& path, bool 
 
 	logger::info("Loading {} ({}x{}|{} FPS|{} frames)", path, videoWidth, videoHeight, targetFPS, frameCount);
 
-	auto scale = 1.0f;
-	if (auto gameWidth = RE::BSGraphics::Renderer::GetScreenSize().width; gameWidth != videoWidth) {
-		scale = static_cast<float>(gameWidth) / videoWidth;
+	auto       scale = 1.0f;
+	const auto screenSize = RE::BSGraphics::Renderer::GetScreenSize();
+	if (screenSize.width != videoWidth || screenSize.height != videoHeight) {
+		const float scaleX = static_cast<float>(screenSize.width) / videoWidth;
+		const float scaleY = static_cast<float>(screenSize.height) / videoHeight;
+		scale = std::min(scaleX, scaleY);  // fit inside screen, preserve aspect ratio
+
+		auto newVideoWidth = static_cast<std::uint32_t>(videoWidth * scale);
 		auto newVideoHeight = static_cast<std::uint32_t>(videoHeight * scale);
-		logger::info("\tScaling to fit game resolution({}x{}->{}x{} ({}X))", videoWidth, videoHeight, gameWidth, newVideoHeight, scale);
-		videoWidth = gameWidth;
+		logger::info("\tScaling to fit game resolution ({}x{} -> {}x{} ({:.2f}X))", videoWidth, videoHeight, newVideoWidth, newVideoHeight, scale);
+		videoWidth = newVideoWidth;
 		videoHeight = newVideoHeight;
 	}
 
@@ -306,13 +327,12 @@ bool VideoPlayer::LoadVideo(ID3D11Device* device, const std::string& path, bool 
 	return true;
 }
 
-void VideoPlayer::ResetAudio(bool playNextVideo)
+void VideoPlayer::ResetAudio()
 {
 	audioReader = nullptr;
+	audioVolume = nullptr;
 	if (audioWriter) {
-		if (!playNextVideo) {
-			audioWriter->Flush(0);
-		}
+		audioWriter->Flush(0);
 		audioWriter->Finalize();
 		audioWriter = nullptr;
 	}
@@ -344,7 +364,7 @@ void VideoPlayer::ResetImpl(bool playNextVideo)
 	}
 
 	if (audioLoaded) {
-		ResetAudio(playNextVideo);
+		ResetAudio();
 		if (!playNextVideo) {
 			audioLoaded = false;
 		}
@@ -423,6 +443,28 @@ void VideoPlayer::ShowDebugInfo()
 	ImGui::Text("\tFrames Processed: %u/%u", readFrameCount.load(), frameCount);
 	ImGui::Text("\tTarget FPS: %.1f", targetFPS);
 	ImGui::Text("\tActual FPS: %.1f", actualFPS.load());
+	ImGui::Text("\tVolume: %.0f%%", displayVolume);
+}
+
+void VideoPlayer::OnVolumeUpdate()
+{
+	const auto elapsed = std::chrono::steady_clock::now() - volumeDisplayStart;
+	if (elapsed < volumeDisplayDuration) {
+		auto min = ImGui::GetItemRectMin();
+		ImGui::SetCursorScreenPos(min);
+
+		const float t = float(elapsed / volumeDisplayDuration);
+
+		float alpha;
+		if (t <= 0.75f) {
+			alpha = 1.0f;
+		} else {
+			float fadeProgress = (t - 0.75f) / 0.25f;
+			alpha = 1.0f - fadeProgress;
+		}
+
+		ImGui::TextColored(ImVec4(1.0f, 1.0f, 1.0f, alpha), "Volume: %.0f%%", displayVolume);
+	}
 }
 
 PLAYBACK_MODE VideoPlayer::GetPlaybackMode() const
@@ -433,4 +475,14 @@ PLAYBACK_MODE VideoPlayer::GetPlaybackMode() const
 void VideoPlayer::SetPlaybackMode(PLAYBACK_MODE a_mode)
 {
 	playbackMode = a_mode;
+}
+
+void VideoPlayer::IncrementVolume(float a_delta)
+{
+	if (audioVolume) {
+		volume = std::clamp(volume + a_delta, 0.0f, 1.0f);
+		audioVolume->SetMasterVolume(volume);
+		displayVolume = volume * 100.0f;
+		volumeDisplayStart = std::chrono::steady_clock::now();
+	}
 }

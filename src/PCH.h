@@ -22,6 +22,7 @@
 #include <mfapi.h>
 #include <mfidl.h>
 #include <mfreadwrite.h>
+#include <mftransform.h>
 #include <propvarutil.h>
 
 #include <ClibUtil/RNG.hpp>

@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.20)
 set(NAME "po3_MainMenuVideo" CACHE STRING "")
-set(VERSION 1.2.1 CACHE STRING "")
+set(VERSION 1.3.0 CACHE STRING "")
 set(AE_VERSION 1)
 set(VR_VERSION 1)
 
@@ -11,6 +11,8 @@ option(BUILD_SKYRIMVR "Build for Skyrim VR" OFF)
 option(BUILD_SKYRIMAE "Build for Skyrim AE" OFF)
 
 # ---- Cache build vars ----
+
+set($ENV{OPENCV_VIDEOIO_MSMF_ENABLE_HW_TRANSFORMS} true)
 
 macro(set_from_environment VARIABLE)
 	if (NOT DEFINED ${VARIABLE} AND DEFINED ENV{${VARIABLE}})
