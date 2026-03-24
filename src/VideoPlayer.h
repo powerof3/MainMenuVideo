@@ -68,7 +68,7 @@ public:
 	PLAYBACK_MODE GetPlaybackMode() const;
 	void          SetPlaybackMode(PLAYBACK_MODE a_mode);
 
-	void  IncrementVolume(float a_delta);
+	void IncrementVolume(float a_delta);
 
 private:
 	using clock = std::chrono::steady_clock;
