@@ -5,16 +5,14 @@ namespace ImGui
 	struct Texture
 	{
 		Texture() = default;
-		Texture(ID3D11Device* device, std::uint32_t a_width, std::uint32_t a_height, float a_scale);
+		Texture(ID3D11Device* device, std::uint32_t a_width, std::uint32_t a_height);
 		~Texture() = default;
 
 		void Update(ID3D11DeviceContext* context, const cv::Mat& frame) const;
 
 		// members
-		ImVec2                           size{ 0.0f, 0.0f };
 		ComPtr<ID3D11Texture2D>          texture{ nullptr };
 		ComPtr<ID3D11ShaderResourceView> srView{ nullptr };
-		float                            scale{ 1.0f };
 	};
 }
 
@@ -84,6 +82,7 @@ private:
 	std::string                     currentVideo;
 	cv::VideoCapture                cap;
 	std::unique_ptr<ImGui::Texture> texture;
+	ImVec2                          displaySize{ 0.0f, 0.0f };
 	PLAYBACK_MODE                   playbackMode{ PLAYBACK_MODE::kLoop };
 	std::uint32_t                   videoWidth{ 0 };
 	std::uint32_t                   videoHeight{ 0 };

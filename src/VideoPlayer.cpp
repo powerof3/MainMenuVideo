@@ -2,9 +2,7 @@
 
 #include "Manager.h"
 
-ImGui::Texture::Texture(ID3D11Device* device, std::uint32_t a_width, std::uint32_t a_height, float a_scale) :
-	size(static_cast<float>(a_width), static_cast<float>(a_height)),
-	scale(a_scale)
+ImGui::Texture::Texture(ID3D11Device* device, std::uint32_t a_width, std::uint32_t a_height)
 {
 	D3D11_TEXTURE2D_DESC desc{
 		.Width = a_width,
@@ -86,7 +84,7 @@ bool VideoPlayer::LoadAudio(const std::string& path)
 										if (SUCCEEDED(hr)) {
 											hr = sinkWriterAttributes->SetUINT32(MF_READWRITE_ENABLE_HARDWARE_TRANSFORMS, 1);
 											if (SUCCEEDED(hr)) {
-												hr = MFCreateSinkWriterFromMediaSink(mediaSink.Get(), nullptr, &audioWriter);
+												hr = MFCreateSinkWriterFromMediaSink(mediaSink.Get(), sinkWriterAttributes.Get(), &audioWriter);
 												if (SUCCEEDED(hr)) {
 													hr = audioWriter->SetInputMediaType(0, inputType.Get(), nullptr);
 													if (SUCCEEDED(hr)) {
@@ -140,9 +138,6 @@ void VideoPlayer::CreateVideoThread()
 		cv::Mat frame;
 		cv::Mat processedFrame;
 
-		const auto needScaling = texture->scale != 1.0f;
-		const auto interpolation = texture->scale > 1.0f ? cv::INTER_LINEAR : cv::INTER_AREA;
-
 		auto restart_loop = [&]() {
 			readFrameCount.store(0);
 			cap.release();
@@ -194,9 +189,7 @@ void VideoPlayer::CreateVideoThread()
 				frameStartTime += frameDuration;
 				continue;
 			}
-			if (needScaling) {
-				cv::resize(processedFrame, processedFrame, cv::Size(), texture->scale, texture->scale, interpolation);
-			}
+
 			{
 				WriteLocker lock(videoFrameLock);
 				cv::swap(processedFrame, videoFrame);
@@ -212,7 +205,7 @@ void VideoPlayer::CreateVideoThread()
 				actualFPS = static_cast<float>(frameCount / totalElapsed);
 				debugUpdateInfoTime = now;
 			}
-		}
+		} 
 	});
 }
 
@@ -299,21 +292,21 @@ bool VideoPlayer::LoadVideo(ID3D11Device* device, const std::string& path, bool 
 
 	logger::info("Loading {} ({}x{}|{} FPS|{} frames)", path, videoWidth, videoHeight, targetFPS, frameCount);
 
-	auto       scale = 1.0f;
 	const auto screenSize = RE::BSGraphics::Renderer::GetScreenSize();
 	if (screenSize.width != videoWidth || screenSize.height != videoHeight) {
 		const float scaleX = static_cast<float>(screenSize.width) / videoWidth;
 		const float scaleY = static_cast<float>(screenSize.height) / videoHeight;
-		scale = std::min(scaleX, scaleY);  // fit inside screen, preserve aspect ratio
+		const float scale = std::min(scaleX, scaleY);
 
-		auto newVideoWidth = static_cast<std::uint32_t>(videoWidth * scale);
-		auto newVideoHeight = static_cast<std::uint32_t>(videoHeight * scale);
-		logger::info("\tScaling to fit game resolution ({}x{} -> {}x{} ({:.2f}X))", videoWidth, videoHeight, newVideoWidth, newVideoHeight, scale);
-		videoWidth = newVideoWidth;
-		videoHeight = newVideoHeight;
+		auto displayWidth = static_cast<std::uint32_t>(videoWidth * scale);
+		auto displayHeight = static_cast<std::uint32_t>(videoHeight * scale);
+		logger::info("\tScaling to fit screen ({}x{} -> {}x{} ({:.2f}X))", videoWidth, videoHeight, displayWidth, displayHeight, scale);
+		displaySize = { static_cast<float>(displayWidth), static_cast<float>(displayHeight) };
+	} else {
+		displaySize = { static_cast<float>(videoWidth), static_cast<float>(videoHeight) };
 	}
 
-	texture = std::make_unique<ImGui::Texture>(device, videoWidth, videoHeight, scale);
+	texture = std::make_unique<ImGui::Texture>(device, videoWidth, videoHeight);
 	if (!texture || !texture->texture || !texture->srView) {
 		cap.release();
 		return false;
@@ -405,7 +398,7 @@ ImTextureID VideoPlayer::GetTextureID() const
 
 ImVec2 VideoPlayer::GetNativeSize() const
 {
-	return texture ? texture->size : ImGui::GetIO().DisplaySize;
+	return texture ? displaySize : ImGui::GetIO().DisplaySize;
 }
 
 bool VideoPlayer::IsInitialized() const
