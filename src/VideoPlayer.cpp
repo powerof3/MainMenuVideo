@@ -94,7 +94,7 @@ bool VideoPlayer::LoadAudio(const std::string& path)
 															service->GetService(MR_POLICY_VOLUME_SERVICE, IID_PPV_ARGS(&audioVolume));
 														}
 														if (audioVolume) {
-															audioVolume->SetMasterVolume(volume);
+															audioVolume->SetMasterVolume(volume.load(std::memory_order_relaxed));
 														}
 														return true;
 													}
@@ -125,11 +125,11 @@ void VideoPlayer::CreateVideoThread()
 	videoThread = std::jthread([this](std::stop_token st) {
 		SetThreadPriority(GetCurrentThread(), THREAD_PRIORITY_BELOW_NORMAL);
 
-		if (audioLoaded) {
+		if (audioLoaded.load(std::memory_order_relaxed)) {
 			startBarrier.arrive_and_wait();  // wait until both video+audio are ready
 		}
-		transitioning.store(false);
-		playing.store(true);
+
+		playbackState.store(PLAYBACK_STATE::kPlaying, std::memory_order_release);
 
 		time_point frameStartTime = clock::now();
 		time_point playbackStart = frameStartTime;
@@ -139,11 +139,11 @@ void VideoPlayer::CreateVideoThread()
 		cv::Mat processedFrame;
 
 		auto restart_loop = [&]() {
-			readFrameCount.store(0);
+			readFrameCount.store(0, std::memory_order_relaxed);
 			cap.release();
 			cap.open(currentVideo, cv::CAP_MSMF, { cv::CAP_PROP_HW_ACCELERATION, cv::VIDEO_ACCELERATION_ANY });
 			RestartAudioThread();
-			if (audioLoaded) {
+			if (audioLoaded.load(std::memory_order_relaxed)) {
 				startBarrier.arrive_and_wait();
 			}
 			// Reset timing for new loop
@@ -201,11 +201,11 @@ void VideoPlayer::CreateVideoThread()
 			if (now - debugUpdateInfoTime >= debugUpdateInterval) {
 				const auto totalElapsed = duration(now - playbackStart).count();
 				const auto frameCount = readFrameCount.load(std::memory_order_relaxed);
-				elapsedTime = static_cast<float>(totalElapsed);
-				actualFPS = static_cast<float>(frameCount / totalElapsed);
+				elapsedTime.store(static_cast<float>(totalElapsed), std::memory_order_relaxed);
+				actualFPS.store(static_cast<float>(frameCount / totalElapsed), std::memory_order_relaxed);
 				debugUpdateInfoTime = now;
 			}
-		} 
+		}
 	});
 }
 
@@ -229,7 +229,7 @@ void VideoPlayer::Update(ID3D11DeviceContext* context)
 
 void VideoPlayer::CreateAudioThread()
 {
-	if (!audioLoaded || audioThread.joinable()) {
+	if (!audioLoaded.load(std::memory_order_relaxed) || audioThread.joinable()) {
 		return;
 	}
 
@@ -268,7 +268,7 @@ void VideoPlayer::RestartAudioThread()
 	if (audioLoaded) {
 		audioThread = {};
 		ResetAudio();
-		audioLoaded = LoadAudio(currentVideo);
+		audioLoaded.store(LoadAudio(currentVideo), std::memory_order_relaxed);
 		CreateAudioThread();
 	}
 }
@@ -312,7 +312,7 @@ bool VideoPlayer::LoadVideo(ID3D11Device* device, const std::string& path, bool 
 		return false;
 	}
 
-	audioLoaded = playAudio ? LoadAudio(path) : false;
+	audioLoaded.store(playAudio ? LoadAudio(path) : false, std::memory_order_relaxed);
 
 	CreateAudioThread();
 	CreateVideoThread();
@@ -337,8 +337,6 @@ void VideoPlayer::ResetAudio()
 
 void VideoPlayer::ResetImpl(bool playNextVideo)
 {
-	playing.store(false);
-
 	if (videoThread.joinable()) {
 		videoThread.request_stop();
 		videoThread.join();
@@ -348,18 +346,18 @@ void VideoPlayer::ResetImpl(bool playNextVideo)
 		audioThread.join();
 	}
 
-	readFrameCount.store(0);
-	elapsedTime.store(0);
+	readFrameCount.store(0, std ::memory_order_relaxed);
+	elapsedTime.store(0, std::memory_order_relaxed);
 
 	{
 		WriteLocker lock(videoFrameLock);
 		videoFrame.release();
 	}
 
-	if (audioLoaded) {
+	if (audioLoaded.load(std::memory_order_relaxed)) {
 		ResetAudio();
 		if (!playNextVideo) {
-			audioLoaded = false;
+			audioLoaded.store(false, std::memory_order_relaxed);
 		}
 	}
 
@@ -368,21 +366,24 @@ void VideoPlayer::ResetImpl(bool playNextVideo)
 	}
 	cap.release();
 
-	if (playNextVideo && !Manager::GetSingleton()->LoadNextVideo()) {
-		transitioning.store(false);
+	if (playNextVideo) {
+		if (!Manager::GetSingleton()->LoadNextVideo()) {
+			playbackState.store(PLAYBACK_STATE::kIdle, std::memory_order_release);
+		}
+	} else {
+		playbackState.store(PLAYBACK_STATE::kIdle, std::memory_order_release);
 	}
-
-	resetting.store(false);
 }
 
 void VideoPlayer::Reset(bool playNextVideo)
 {
-	if (!IsPlaying() || resetting.exchange(true)) {
-		return;
-	}
+	auto expected = PLAYBACK_STATE::kPlaying;
+	auto desired = playNextVideo ? PLAYBACK_STATE::kTransitioning : PLAYBACK_STATE::kStopping;
 
-	if (playNextVideo) {
-		transitioning.store(true);
+	if (!playbackState.compare_exchange_strong(expected, desired,
+			std::memory_order_acq_rel,
+			std::memory_order_acquire)) {
+		return;
 	}
 
 	resetThread = std::jthread([this, playNextVideo](std::stop_token) {
@@ -408,17 +409,18 @@ bool VideoPlayer::IsInitialized() const
 
 bool VideoPlayer::IsPlaying() const
 {
-	return (playing.load() && !resetting.load()) || IsTransitioning();
+	auto state = playbackState.load(std::memory_order_acquire);
+	return state == PLAYBACK_STATE::kPlaying || state == PLAYBACK_STATE::kTransitioning;
 }
 
 bool VideoPlayer::IsTransitioning() const
 {
-	return transitioning.load();
+	return playbackState.load(std::memory_order_acquire) == PLAYBACK_STATE::kTransitioning;
 }
 
 bool VideoPlayer::IsPlayingAudio() const
 {
-	return IsPlaying() && audioLoaded;
+	return IsPlaying() && audioLoaded.load(std::memory_order_relaxed);
 }
 
 void VideoPlayer::ShowDebugInfo()
@@ -432,11 +434,11 @@ void VideoPlayer::ShowDebugInfo()
 	}
 
 	ImGui::Text("%s", currentVideo.c_str());
-	ImGui::Text("\tElapsed Time: %.1f seconds", elapsedTime.load());
-	ImGui::Text("\tFrames Processed: %u/%u", readFrameCount.load(), frameCount);
+	ImGui::Text("\tElapsed Time: %.1f seconds", elapsedTime.load(std::memory_order_relaxed));
+	ImGui::Text("\tFrames Processed: %u/%u", readFrameCount.load(std::memory_order_relaxed), frameCount);
 	ImGui::Text("\tTarget FPS: %.1f", targetFPS);
-	ImGui::Text("\tActual FPS: %.1f", actualFPS.load());
-	ImGui::Text("\tVolume: %.0f%%", displayVolume);
+	ImGui::Text("\tActual FPS: %.1f", actualFPS.load(std::memory_order_relaxed));
+	ImGui::Text("\tVolume: %.0f%%", volume.load(std::memory_order_relaxed) * 100.0f);
 }
 
 void VideoPlayer::OnVolumeUpdate()
@@ -456,7 +458,7 @@ void VideoPlayer::OnVolumeUpdate()
 			alpha = 1.0f - fadeProgress;
 		}
 
-		ImGui::TextColored(ImVec4(1.0f, 1.0f, 1.0f, alpha), "Volume: %.0f%%", displayVolume);
+		ImGui::TextColored(ImVec4(1.0f, 1.0f, 1.0f, alpha), "Volume: %.0f%%", volume.load(std::memory_order_relaxed) * 100.0f);
 	}
 }
 
@@ -473,9 +475,9 @@ void VideoPlayer::SetPlaybackMode(PLAYBACK_MODE a_mode)
 void VideoPlayer::IncrementVolume(float a_delta)
 {
 	if (audioVolume) {
-		volume = std::clamp(volume + a_delta, 0.0f, 1.0f);
-		audioVolume->SetMasterVolume(volume);
-		displayVolume = volume * 100.0f;
+		auto tempVolume = std::clamp(volume.load(std::memory_order_relaxed) + a_delta, 0.0f, 1.0f);
+		audioVolume->SetMasterVolume(tempVolume);
+		volume.store(tempVolume, std::memory_order_relaxed);
 		volumeDisplayStart = std::chrono::steady_clock::now();
 	}
 }

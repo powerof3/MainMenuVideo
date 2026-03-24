@@ -23,15 +23,26 @@ enum class PLAYBACK_MODE
 	kLoop
 };
 
+enum class PLAYBACK_STATE : std::uint8_t
+{
+	kIdle,
+	kPlaying,
+	kStopping,  // Resetting
+	kTransitioning
+};
+
 class VideoPlayer
 {
 public:
 	VideoPlayer() = default;
 	~VideoPlayer()
 	{
-		if (resetting.exchange(true) == false) {
+		auto expected = PLAYBACK_STATE::kPlaying;
+		if (playbackState.compare_exchange_strong(expected, PLAYBACK_STATE::kStopping,
+				std::memory_order_acq_rel,
+				std::memory_order_acquire)) {
 			ResetImpl();
-		} else {
+		} else if (expected == PLAYBACK_STATE::kStopping || expected == PLAYBACK_STATE::kTransitioning) {
 			if (resetThread.joinable()) {
 				resetThread.request_stop();
 				resetThread.join();
@@ -58,7 +69,6 @@ public:
 	void          SetPlaybackMode(PLAYBACK_MODE a_mode);
 
 	void  IncrementVolume(float a_delta);
-	float GetVolume() const { return volume; }
 
 private:
 	using clock = std::chrono::steady_clock;
@@ -99,17 +109,14 @@ private:
 	ComPtr<IMFSinkWriter>           audioWriter{};
 	ComPtr<IMFMediaSink>            mediaSink{};
 	ComPtr<IMFSimpleAudioVolume>    audioVolume{};
-	float                           volume{ 1.0f };
-	float                           displayVolume{ 100.0f };
+	std::atomic<float>              volume{ 1.0f };
 	time_point                      volumeDisplayStart{};
 	std::jthread                    audioThread;
 	std::jthread                    videoThread;
 	std::jthread                    resetThread;
 	std::barrier<>                  startBarrier{ 2 };
 	std::atomic<bool>               audioLoaded{ false };
-	std::atomic<bool>               playing{ false };
-	std::atomic<bool>               resetting{ false };
-	std::atomic<bool>               transitioning{ false };
+	std::atomic<PLAYBACK_STATE>     playbackState{ PLAYBACK_STATE::kIdle };
 
 	static constexpr duration volumeDisplayDuration{ 1.5 };
 };
