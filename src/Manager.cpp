@@ -229,6 +229,10 @@ void Manager::ProcessInput()
 		return;
 	}
 
+	if (auto UI = RE::UI::GetSingleton(); UI && UI->IsMenuOpen(RE::Console::MENU_NAME)) {
+		return;
+	}
+
 	stopPlayback.Process([this]() { videoPlayer.Reset(); });
 	playNext.Process([this]() { videoPlayer.Reset(true); });
 	volumeUp.Process([this]() { videoPlayer.IncrementVolume(volumeStep); });
