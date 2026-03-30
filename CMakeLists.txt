@@ -181,16 +181,16 @@ endif ()
 # ---- Post build ----
 
 if (BUILD_SKYRIMAE)
-    set(PDB_NAME "${PROJECT_NAME}_AE.pdb")
+    set(PDB_NAME "${PROJECT_NAME}_AE_D.pdb")
 elseif (BUILD_SKYRIMVR)
-    set(PDB_NAME "${PROJECT_NAME}_VR.pdb")
+    set(PDB_NAME "${PROJECT_NAME}_VR_D.pdb")
 else()
-    set(PDB_NAME "${PROJECT_NAME}_SE.pdb")
+    set(PDB_NAME "${PROJECT_NAME}_SE_D.pdb")
 endif()
 
 add_custom_command(
 	TARGET ${PROJECT_NAME}
 	POST_BUILD
-	COMMAND ${CMAKE_COMMAND} -E make_directory ${CMAKE_SOURCE_DIR}/pdbs
-	COMMAND ${CMAKE_COMMAND} -E copy_if_different $<TARGET_PDB_FILE:${PROJECT_NAME}> ${CMAKE_SOURCE_DIR}/pdbs/${PDB_NAME}
+	COMMAND ${CMAKE_COMMAND} -E "$<IF:$<CONFIG:Debug>,make_directory,true>" "${CMAKE_SOURCE_DIR}/pdbs"
+	COMMAND ${CMAKE_COMMAND} -E "$<IF:$<CONFIG:Debug>,copy_if_different,true>" "$<TARGET_PDB_FILE:${PROJECT_NAME}>" "${CMAKE_SOURCE_DIR}/pdbs/${PDB_NAME}"
 )
