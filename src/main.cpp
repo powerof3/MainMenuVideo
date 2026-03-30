@@ -1,25 +1,14 @@
-#include "Manager.h"
-
-void OnInit(SKSE::MessagingInterface::Message* a_msg)
-{
-	if (a_msg->type == SKSE::MessagingInterface::kPostLoad) {
-		logger::info("{:*^30}", "POST LOAD");
-		Manager::GetSingleton()->Register();
-	} else if (a_msg->type == SKSE::MessagingInterface::kPostPostLoad) {
-		logger::info("{:*^30}", "POST POST LOADED");
-		Manager::GetSingleton()->CompatibilityCheck();
-	}
-}
+#include "PCH.h"
 
 #ifdef SKYRIM_AE
 extern "C" DLLEXPORT constinit auto SKSEPlugin_Version = []() {
 	SKSE::PluginVersionData v;
 	v.PluginVersion(Version::MAJOR);
-	v.PluginName("MainMenuVideo");
+	v.PluginName(Version::PROJECT);
 	v.AuthorName("powerofthree");
 	v.UsesAddressLibrary();
 	v.UsesUpdatedStructs();
-	v.CompatibleVersions({ SKSE::RUNTIME_SSE_LATEST });
+	v.CompatibleVersions({ SKSE::RUNTIME_SSE_1_6_640, SKSE::RUNTIME_SSE_1_6_1130, SKSE::RUNTIME_SSE_1_6_1170, SKSE::RUNTIME_SSE_LATEST });
 
 	return v;
 }();
@@ -27,7 +16,7 @@ extern "C" DLLEXPORT constinit auto SKSEPlugin_Version = []() {
 extern "C" DLLEXPORT bool SKSEAPI SKSEPlugin_Query(const SKSE::QueryInterface* a_skse, SKSE::PluginInfo* a_info)
 {
 	a_info->infoVersion = SKSE::PluginInfo::kVersion;
-	a_info->name = "MainMenuVideo";
+	a_info->name = Version::PROJECT.data();
 	a_info->version = Version::MAJOR;
 
 	if (a_skse->IsEditor()) {
@@ -73,9 +62,6 @@ extern "C" DLLEXPORT bool SKSEAPI SKSEPlugin_Load(const SKSE::LoadInterface* a_s
 	logger::info("Game version : {}", a_skse->RuntimeVersion().string());
 
 	SKSE::Init(a_skse, false);
-
-	const auto messaging = SKSE::GetMessagingInterface();
-	messaging->RegisterListener("SKSE", OnInit);
 
 	return true;
 }
