@@ -76,10 +76,6 @@ configure_file(
 
 # ---- Globals ----
 
-add_compile_definitions(
-	SKSE_SUPPORT_XBYAK
-)
-
 if (MSVC)
 	if (NOT ${CMAKE_GENERATOR} STREQUAL "Ninja")
 		add_compile_options(

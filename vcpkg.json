@@ -3,7 +3,6 @@
   "version-string": "1.0.0",
   "dependencies": [
     "spdlog",
-    "xbyak",
     "rsm-binary-io"
   ],
   "builtin-baseline": "4b77da7fed37817f124936239197833469f1b9a8"

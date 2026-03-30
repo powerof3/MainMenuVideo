@@ -6,20 +6,8 @@
 #include "RE/Skyrim.h"
 #include "SKSE/SKSE.h"
 
-#include <spdlog/sinks/basic_file_sink.h>
-#include <xbyak/xbyak.h>
-
 #define DLLEXPORT __declspec(dllexport)
 
 using namespace std::literals;
-
-namespace logger = SKSE::log;
-
-using EventResult = RE::BSEventNotifyControl;
-
-namespace stl
-{
-	using namespace SKSE::stl;
-}
 
 #include "Version.h"
