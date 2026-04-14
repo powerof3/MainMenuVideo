@@ -1,3 +1,4 @@
 build*/
 /.vs
 /pdbs
+/__pycache__
