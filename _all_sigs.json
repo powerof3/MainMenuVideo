@@ -1,0 +1,4590 @@
+[
+  {
+    "n": "RTDynamicCast",
+    "t": "func",
+    "sig": "void*(void* a_inptr, std::int32_t a_vfDelta, void* a_srcType, void* a_targetType, std::int32_t a_isReference)",
+    "s": 20233648,
+    "a": 22269738
+  },
+  {
+    "n": "ActorMagicCaster::CheckAttachCastingArt",
+    "t": "func",
+    "sig": "void()",
+    "s": 5522576,
+    "a": 5977680
+  },
+  {
+    "n": "BGSDefaultObjectManager::GetSingleton",
+    "t": "func",
+    "sig": "static BGSDefaultObjectManager*()",
+    "s": 1012240,
+    "a": 1846896
+  },
+  {
+    "n": "BGSDynamicPersistenceManager::PromoteReference",
+    "t": "func",
+    "sig": "bool(TESObjectREFR* a_refr, TESForm* a_owner)",
+    "s": 1779504,
+    "a": 2093712
+  },
+  {
+    "n": "BGSDynamicPersistenceManager::DemoteReference",
+    "t": "func",
+    "sig": "bool(TESObjectREFR* a_refr, TESForm* a_owner, bool a_allowActors = false)",
+    "s": 1779984,
+    "a": 2094192
+  },
+  {
+    "n": "BGSIdleCollection::Ctor",
+    "t": "func",
+    "sig": "BGSIdleCollection*()",
+    "s": 1601600,
+    "a": 1908528
+  },
+  {
+    "n": "BGSImpactManager::PlayImpactEffect",
+    "t": "func",
+    "sig": "bool(TESObjectREFR* a_ref, BGSImpactDataSet* a_impactEffect, const BSFixedString& a_nodeName, NiPoint3& a_pickDirection, float a_pickLength, bool a_applyNodeRotation, bool a_useNodeLocalRotation)",
+    "s": 5909600,
+    "a": 6487632
+  },
+  {
+    "n": "BGSImpactManager::PlayImpactDataSounds",
+    "t": "func",
+    "sig": "bool(ImpactSoundData& a_impactSoundData)",
+    "s": 5908784,
+    "a": 6486784
+  },
+  {
+    "n": "BGSLoadGameBuffer::LoadDataEndian",
+    "t": "func",
+    "sig": "void(void* a_data, std::uint32_t a_offset, std::uint32_t a_size)",
+    "s": 5864784,
+    "a": 6443904
+  },
+  {
+    "n": "BGSMaterialType::GetMaterialType",
+    "t": "func",
+    "sig": "static BGSMaterialType*(MATERIAL_ID a_materialID)",
+    "s": 2913264,
+    "a": 3260560
+  },
+  {
+    "n": "BGSNumericIDIndex::GetNumericID",
+    "t": "func",
+    "sig": "FormID()",
+    "s": 5844656,
+    "a": 6423024
+  },
+  {
+    "n": "BGSNumericIDIndex::SetNumericID",
+    "t": "func",
+    "sig": "void(FormID a_formID)",
+    "s": 5844752,
+    "a": 6423104
+  },
+  {
+    "n": "BGSRelationship::GetRelationship",
+    "t": "func",
+    "sig": "static BGSRelationship*(TESNPC* a_npc1, TESNPC* a_npc2)",
+    "s": 3433584,
+    "a": 3793360
+  },
+  {
+    "n": "BGSSaveGameBuffer::SaveDataEndian",
+    "t": "func",
+    "sig": "void(const void* a_data, std::uint32_t a_size)",
+    "s": 5873072,
+    "a": 6452224
+  },
+  {
+    "n": "BGSSaveLoadGame::GetChange",
+    "t": "func",
+    "sig": "bool(TESForm* a_form, std::uint32_t a_changes)",
+    "s": 5749024,
+    "a": 6308864
+  },
+  {
+    "n": "BGSSaveLoadGame::IsFormIDInUse",
+    "t": "func",
+    "sig": "bool(FormID a_formID)",
+    "s": 5753744,
+    "a": 6313808
+  },
+  {
+    "n": "BGSStoryEventManager::GetSingleton",
+    "t": "func",
+    "sig": "static BGSStoryEventManager*()",
+    "s": 3213088,
+    "a": 3569184
+  },
+  {
+    "n": "BGSStoryEventManager::AddEvent_Impl",
+    "t": "func",
+    "sig": "std::uint32_t(std::uint32_t a_index, const void* a_event)",
+    "s": 5048000,
+    "a": 5422208
+  },
+  {
+    "n": "bhkCharacterController::IsHurtfulBody",
+    "t": "func",
+    "sig": "static bool(hkpRigidBody* a_body)",
+    "s": 14422912,
+    "a": 15338944
+  },
+  {
+    "n": "bhkCharacterController::ProcessHurtfulBody",
+    "t": "func",
+    "sig": "void(hkpRigidBody* a_body, const hkContactPoint* a_contactPoint)",
+    "s": 14423744,
+    "a": 15339696
+  },
+  {
+    "n": "bhkCollisionObject::GetRigidBody",
+    "t": "func",
+    "sig": "bhkRigidBody*()",
+    "s": 1320176,
+    "a": 3095440
+  },
+  {
+    "n": "bhkShape::GetMaterialID",
+    "t": "func",
+    "sig": "MATERIAL_ID(hkpShapeKey a_key)",
+    "s": 14535296,
+    "a": 15454992
+  },
+  {
+    "n": "BSDismemberSkinInstance::UpdateDismemberPartion",
+    "t": "func",
+    "sig": "void(std::uint16_t a_slot, bool a_enable)",
+    "s": 1891648,
+    "a": 2204976
+  },
+  {
+    "n": "BSFaceGenManager::PrepareHeadPartForShaders",
+    "t": "func",
+    "sig": "void(BSFaceGenNiNode* a_node, BGSHeadPart* a_headPart, TESNPC* a_npc)",
+    "s": 4008544,
+    "a": 4373904
+  },
+  {
+    "n": "BSFixedString::ctor8",
+    "t": "func",
+    "sig": "BSFixedString*(const char* a_data)",
+    "s": 12749808,
+    "a": 13551056
+  },
+  {
+    "n": "BSFixedString::ctor16",
+    "t": "func",
+    "sig": "BSFixedString*(const wchar_t* a_data)",
+    "s": 12752144,
+    "a": 13553552
+  },
+  {
+    "n": "BShkbAnimationGraph::GetGraphVariableBool",
+    "t": "func",
+    "sig": "bool(const BSFixedString& a_variableName, bool& a_out)",
+    "s": 11493712,
+    "a": 12282128
+  },
+  {
+    "n": "BShkbAnimationGraph::GetGraphVariableFloat",
+    "t": "func",
+    "sig": "bool(const BSFixedString& a_variableName, float& a_out)",
+    "s": 11493520,
+    "a": 12282336
+  },
+  {
+    "n": "BShkbAnimationGraph::GetGraphVariableInt",
+    "t": "func",
+    "sig": "bool(const BSFixedString& a_variableName, int& a_out)",
+    "s": 11493328,
+    "a": 12282528
+  },
+  {
+    "n": "BShkbAnimationGraph::SetGraphVariableBool",
+    "t": "func",
+    "sig": "bool(const BSFixedString& a_variableName, const bool a_in)",
+    "s": 11689072,
+    "a": 12089568
+  },
+  {
+    "n": "BShkbAnimationGraph::SetGraphVariableFloat",
+    "t": "func",
+    "sig": "bool(const BSFixedString& a_variableName, const float a_in)",
+    "s": 11688336,
+    "a": 12089584
+  },
+  {
+    "n": "BShkbAnimationGraph::SetGraphVariableInt",
+    "t": "func",
+    "sig": "bool(const BSFixedString& a_variableName, const int a_in)",
+    "s": 11688112,
+    "a": 12089648
+  },
+  {
+    "n": "BSImagespaceShader::Ctor",
+    "t": "func",
+    "sig": "BSImagespaceShader*()",
+    "s": 19973536,
+    "a": 21987584
+  },
+  {
+    "n": "BSLightingShaderMaterial::Ctor",
+    "t": "func",
+    "sig": "BSLightingShaderMaterial*()",
+    "s": 19721552,
+    "a": 21721584
+  },
+  {
+    "n": "BSLightingShaderMaterialEnvmap::Ctor",
+    "t": "func",
+    "sig": "BSLightingShaderMaterialEnvmap*()",
+    "s": 19726752,
+    "a": 21726816
+  },
+  {
+    "n": "BSLightingShaderMaterialEye::Ctor",
+    "t": "func",
+    "sig": "BSLightingShaderMaterialEye*()",
+    "s": 19728464,
+    "a": 21728480
+  },
+  {
+    "n": "BSLightingShaderMaterialFacegen::Ctor",
+    "t": "func",
+    "sig": "BSLightingShaderMaterialFacegen*()",
+    "s": 19734384,
+    "a": 21734208
+  },
+  {
+    "n": "BSLightingShaderMaterialFacegenTint::Ctor",
+    "t": "func",
+    "sig": "BSLightingShaderMaterialFacegenTint*()",
+    "s": 19736208,
+    "a": 21735952
+  },
+  {
+    "n": "BSLightingShaderMaterialGlowmap::Ctor",
+    "t": "func",
+    "sig": "BSLightingShaderMaterialGlowmap*()",
+    "s": 19730448,
+    "a": 21730384
+  },
+  {
+    "n": "BSLightingShaderMaterialHairTint::Ctor",
+    "t": "func",
+    "sig": "BSLightingShaderMaterialHairTint*()",
+    "s": 19736752,
+    "a": 21736496
+  },
+  {
+    "n": "BSLightingShaderMaterialLandscape::Ctor",
+    "t": "func",
+    "sig": "BSLightingShaderMaterialLandscape*()",
+    "s": 19737280,
+    "a": 21737040
+  },
+  {
+    "n": "BSLightingShaderMaterialLODLandscape::Ctor",
+    "t": "func",
+    "sig": "BSLightingShaderMaterialLODLandscape*()",
+    "s": 19739488,
+    "a": 21739120
+  },
+  {
+    "n": "BSLightingShaderMaterialMultiLayerParallax::Ctor",
+    "t": "func",
+    "sig": "BSLightingShaderMaterialMultiLayerParallax*()",
+    "s": 19741392,
+    "a": 21740928
+  },
+  {
+    "n": "BSLightingShaderMaterialParallax::Ctor",
+    "t": "func",
+    "sig": "BSLightingShaderMaterialParallax*()",
+    "s": 19731632,
+    "a": 21731536
+  },
+  {
+    "n": "BSLightingShaderMaterialParallaxOcc::Ctor",
+    "t": "func",
+    "sig": "BSLightingShaderMaterialParallaxOcc*()",
+    "s": 19732816,
+    "a": 21732688
+  },
+  {
+    "n": "BSLightingShaderMaterialSnow::Ctor",
+    "t": "func",
+    "sig": "BSLightingShaderMaterialSnow*()",
+    "s": 19740912,
+    "a": 21740448
+  },
+  {
+    "n": "BSRenderPass::ClearRenderPass",
+    "t": "func",
+    "sig": "void()",
+    "s": 19914080,
+    "a": 21926816
+  },
+  {
+    "n": "BSScaleformExternalTexture::LoadPNG",
+    "t": "func",
+    "sig": "bool(const BSFixedString& a_path)",
+    "s": 15523856,
+    "a": 16447152
+  },
+  {
+    "n": "BSScaleformExternalTexture::ReleaseTexture",
+    "t": "func",
+    "sig": "void()",
+    "s": 15523552,
+    "a": 16446832
+  },
+  {
+    "n": "BSScaleformExternalTexture::SetTexture",
+    "t": "func",
+    "sig": "bool(NiTexture* a_texture)",
+    "s": 15523664,
+    "a": 16446944
+  },
+  {
+    "n": "BSScaleformImageLoader::AddTexture",
+    "t": "func",
+    "sig": "bool(BSScaleformExternalTexture& a_texture)",
+    "s": 16012112,
+    "a": 16462624
+  },
+  {
+    "n": "BSScaleformImageLoader::RemoveTexture",
+    "t": "func",
+    "sig": "void(BSScaleformExternalTexture& a_texture)",
+    "s": 16013344,
+    "a": 16463776
+  },
+  {
+    "n": "BSShader::MakeRenderPass",
+    "t": "func",
+    "sig": "RE::BSRenderPass*(BSShaderProperty* a_property, BSGeometry* a_geometry, uint32_t a_technique, uint8_t a_numLights, BSLight** a_lights)",
+    "s": 19913920,
+    "a": 21926560
+  },
+  {
+    "n": "BSShaderManager::GetTexture",
+    "t": "func",
+    "sig": "static void(const char* a_path, bool a_demand, NiPointer<NiTexture>& a_textureOut, bool a_isHeightMap)",
+    "s": 19487792,
+    "a": 21495856
+  },
+  {
+    "n": "Entry::release8",
+    "t": "func",
+    "sig": "void(const char*& a_entry)",
+    "s": 12754560,
+    "a": 13556128
+  },
+  {
+    "n": "Entry::release16",
+    "t": "func",
+    "sig": "void(const wchar_t*& a_entry)",
+    "s": 12754928,
+    "a": 13556656
+  },
+  {
+    "n": "ClearEffectForWeapon",
+    "t": "func",
+    "sig": "void(NiAVObject* a_weapon3D)",
+    "s": 4531536,
+    "a": 4909152
+  },
+  {
+    "n": "BSThreadEvent::InitSDM",
+    "t": "func",
+    "sig": "static void()",
+    "s": 12638128,
+    "a": 13438640
+  },
+  {
+    "n": "BSTimer::SetGlobalTimeMultiplier",
+    "t": "func",
+    "sig": "void(float a_multiplier, bool a_arg2)",
+    "s": 12613808,
+    "a": 13408224
+  },
+  {
+    "n": "CraftingMenu::QuitMenu",
+    "t": "func",
+    "sig": "static void()",
+    "s": 8828944,
+    "a": 9476272
+  },
+  {
+    "n": "CraftingSubMenu::UpdateCraftingInfo",
+    "t": "func",
+    "sig": "void(ActorValue a_actorValue)",
+    "s": 8838000,
+    "a": 9486208
+  },
+  {
+    "n": "DialogueItem::Ctor",
+    "t": "func",
+    "sig": "DialogueItem*(TESQuest* a_quest, TESTopic* a_topic, TESTopicInfo* a_topicInfo, TESObjectREFR* a_speaker)",
+    "s": 5687760,
+    "a": 6150352
+  },
+  {
+    "n": "FixedStrings::GetSingleton",
+    "t": "func",
+    "sig": "static FixedStrings*()",
+    "s": 1067728,
+    "a": 1372000
+  },
+  {
+    "n": "GarbageCollector::Add",
+    "t": "func",
+    "sig": "void(TESObjectREFR* a_object, bool a_removeFromCell)",
+    "s": 5939280,
+    "a": 6533408
+  },
+  {
+    "n": "GSysAllocPaged::InitHeapEngine",
+    "t": "func",
+    "sig": "bool(const void* a_heapDesc)",
+    "s": 16024176,
+    "a": 16972016
+  },
+  {
+    "n": "GSysAllocPaged::ShutdownHeapEngine",
+    "t": "func",
+    "sig": "void()",
+    "s": 16024416,
+    "a": 16972352
+  },
+  {
+    "n": "HighProcessData::ClearHeadtrackTarget",
+    "t": "func",
+    "sig": "void(HEAD_TRACK_TYPE a_headtrackType, bool a_defaultHold)",
+    "s": 6780864,
+    "a": 7385520
+  },
+  {
+    "n": "HighProcessData::SetHeadtrackTarget",
+    "t": "func",
+    "sig": "void(HEAD_TRACK_TYPE a_headtrackType, TESObjectREFR* a_target)",
+    "s": 6789072,
+    "a": 7393040
+  },
+  {
+    "n": "HitData::Populate",
+    "t": "func",
+    "sig": "void(Actor* a_aggressor, Actor* a_target, InventoryEntryData* a_weapon)",
+    "s": 7612496,
+    "a": 8237040
+  },
+  {
+    "n": "hkLifoAllocator::BlockAlloc",
+    "t": "func",
+    "sig": "void*(std::int32_t a_numBytesIn)",
+    "s": 10252352,
+    "a": 11045872
+  },
+  {
+    "n": "hkLifoAllocator::BlockFree",
+    "t": "func",
+    "sig": "void(void* a_ptr, std::int32_t a_numBytesIn)",
+    "s": 10252416,
+    "a": 11045936
+  },
+  {
+    "n": "hkLifoAllocator::BufAlloc",
+    "t": "func",
+    "sig": "void*(std::int32_t& a_reqNumBytesInOut)",
+    "s": 10252480,
+    "a": 11046000
+  },
+  {
+    "n": "hkLifoAllocator::BufFree",
+    "t": "func",
+    "sig": "void(void* a_ptr, std::int32_t a_numBytes)",
+    "s": 10252544,
+    "a": 11046064
+  },
+  {
+    "n": "hkLifoAllocator::BufRealloc",
+    "t": "func",
+    "sig": "void*(void* a_old, std::int32_t a_oldNumBytes, std::int32_t& a_reqNumBytesInOut)",
+    "s": 10252608,
+    "a": 11046128
+  },
+  {
+    "n": "hkLifoAllocator::Init",
+    "t": "func",
+    "sig": "void(hkMemoryAllocator* a_slabAllocator, hkMemoryAllocator* a_largeAllocator, hkMemoryAllocator* a_internalAllocator)",
+    "s": 10251952,
+    "a": 11045472
+  },
+  {
+    "n": "hkLifoAllocator::Quit",
+    "t": "func",
+    "sig": "void()",
+    "s": 10252112,
+    "a": 11045632
+  },
+  {
+    "n": "hkpClosestRayHitCollector::AddRayHit",
+    "t": "func",
+    "sig": "void(const hkpCdBody& a_body, const hkpShapeRayCastCollectorOutput& a_hitInfo)",
+    "s": 10862112,
+    "a": 11655664
+  },
+  {
+    "n": "hkpEntity::AddContactListener",
+    "t": "func",
+    "sig": "void(hkpContactListener* a_listener)",
+    "s": 10929632,
+    "a": 11723184
+  },
+  {
+    "n": "hkpEntity::RemoveContactListener",
+    "t": "func",
+    "sig": "void(hkpContactListener* a_listener)",
+    "s": 10929792,
+    "a": 11723344
+  },
+  {
+    "n": "hkpEntity::Activate",
+    "t": "func",
+    "sig": "void()",
+    "s": 10929968,
+    "a": 11723520
+  },
+  {
+    "n": "hkpWorld::AddPhantom",
+    "t": "func",
+    "sig": "hkpPhantom*(hkpPhantom* a_phantom)",
+    "s": 10975104,
+    "a": 11768656
+  },
+  {
+    "n": "hkpWorld::RemovePhantom",
+    "t": "func",
+    "sig": "void(hkpPhantom* a_phantom)",
+    "s": 10976640,
+    "a": 11770192
+  },
+  {
+    "n": "hkpWorld::CastRay",
+    "t": "func",
+    "sig": "void(const hkpWorldRayCastInput& a_input, hkpWorldRayCastOutput& a_output)",
+    "s": 10989568,
+    "a": 11783120
+  },
+  {
+    "n": "HUDMenu::FlashMeter",
+    "t": "func",
+    "sig": "static void(ActorValue a_actorValue)",
+    "s": 9262032,
+    "a": 9922496
+  },
+  {
+    "n": "HUDMenu::UpdateCrosshairMagicTarget",
+    "t": "func",
+    "sig": "static void(bool a_valid)",
+    "s": 8911216,
+    "a": 9566336
+  },
+  {
+    "n": "SendHUDMessage::PopHUDMode",
+    "t": "func",
+    "sig": "void(const char* a_hudMode)",
+    "s": 8908928,
+    "a": 9563568
+  },
+  {
+    "n": "SendHUDMessage::PushHUDMode",
+    "t": "func",
+    "sig": "void(const char* a_hudMode)",
+    "s": 8908912,
+    "a": 9563552
+  },
+  {
+    "n": "ID::GenerateFromPath",
+    "t": "func",
+    "sig": "void(const char* a_path)",
+    "s": 12887568,
+    "a": 13694848
+  },
+  {
+    "n": "ImageSpaceModifierInstanceForm::Trigger",
+    "t": "func",
+    "sig": "static ImageSpaceModifierInstanceForm*(TESImageSpaceModifier* a_imod, float a_strength, NiAVObject* a_target)",
+    "s": 2410592,
+    "a": 2744512
+  },
+  {
+    "n": "ImageSpaceModifierInstanceForm::Stop",
+    "t": "func",
+    "sig": "static void(TESImageSpaceModifier* a_imod)",
+    "s": 2411728,
+    "a": 2745680
+  },
+  {
+    "n": "ImageSpaceModifierInstanceForm::StopCrossFade",
+    "t": "func",
+    "sig": "static void(float a_seconds)",
+    "s": 2413072,
+    "a": 2747264
+  },
+  {
+    "n": "MapMenu::PlaceMarker",
+    "t": "func",
+    "sig": "void()",
+    "s": 9334432,
+    "a": 9990288
+  },
+  {
+    "n": "MemoryManager::GetSingleton",
+    "t": "func",
+    "sig": "static MemoryManager*()",
+    "s": 1036256,
+    "a": 1162144
+  },
+  {
+    "n": "MemoryManager::Allocate",
+    "t": "func",
+    "sig": "void*(std::size_t a_size, std::int32_t a_alignment, bool a_alignmentRequired)",
+    "s": 12591712,
+    "a": 13385920
+  },
+  {
+    "n": "MemoryManager::Deallocate",
+    "t": "func",
+    "sig": "void(void* a_mem, bool a_alignmentRequired)",
+    "s": 12592480,
+    "a": 13387024
+  },
+  {
+    "n": "MemoryManager::GetThreadScrapHeap",
+    "t": "func",
+    "sig": "ScrapHeap*()",
+    "s": 12589056,
+    "a": 13383264
+  },
+  {
+    "n": "MemoryManager::Reallocate",
+    "t": "func",
+    "sig": "void*(void* a_oldMem, std::size_t a_newSize, std::int32_t a_alignment, bool a_aligned)",
+    "s": 12592304,
+    "a": 13386512
+  },
+  {
+    "n": "MemoryManager::RegisterMemoryManager",
+    "t": "func",
+    "sig": "void()",
+    "s": 5878080,
+    "a": 6457552
+  },
+  {
+    "n": "MessageBoxData::QueueMessage",
+    "t": "func",
+    "sig": "void()",
+    "s": 9090496,
+    "a": 9746208
+  },
+  {
+    "n": "NiDirectionalLight::Ctor",
+    "t": "func",
+    "sig": "NiDirectionalLight*()",
+    "s": 13078656,
+    "a": 13892288
+  },
+  {
+    "n": "NiParticleSystem::AddModifier",
+    "t": "func",
+    "sig": "void(NiPSysModifier* a_modifier)",
+    "s": 13644592,
+    "a": 14501376
+  },
+  {
+    "n": "NiPointLight::SetLightAttenuation",
+    "t": "func",
+    "sig": "void(float a_radius)",
+    "s": 2228448,
+    "a": 2555584
+  },
+  {
+    "n": "NiPointLight::Ctor",
+    "t": "func",
+    "sig": "NiPointLight*()",
+    "s": 13054448,
+    "a": 13867664
+  },
+  {
+    "n": "Precipitation::SetupMask",
+    "t": "func",
+    "sig": "void()",
+    "s": 3862976,
+    "a": 4227520
+  },
+  {
+    "n": "Precipitation::RenderMask",
+    "t": "func",
+    "sig": "void(BSParticleShaderRainEmitter* a_emitter)",
+    "s": 3863424,
+    "a": 4227968
+  },
+  {
+    "n": "ScreenSplatter::Clear",
+    "t": "func",
+    "sig": "void()",
+    "s": 2074304,
+    "a": 2389280
+  },
+  {
+    "n": "ParseParameters",
+    "t": "func",
+    "sig": "bool(const SCRIPT_PARAMETER* a_paramInfo, SCRIPT_FUNCTION::ScriptData* a_scriptData, std::uint32_t& a_opcodeOffsetPtr, TESObjectREFR* a_thisObj, TESObjectREFR* a_containingObj, Script* a_scriptObj, ScriptLocals* a_locals, Args... a_args)",
+    "s": 3048448,
+    "a": 3401280
+  },
+  {
+    "n": "SleepWaitMenu::ToggleOpenSleepWaitMenu",
+    "t": "func",
+    "sig": "static void(bool a_sleeping)",
+    "s": 9166384,
+    "a": 9822416
+  },
+  {
+    "n": "TESActionData::Ctor",
+    "t": "func",
+    "sig": "TESActionData*()",
+    "s": 2020688,
+    "a": 7843136
+  },
+  {
+    "n": "TESActorBaseData::GetLevel",
+    "t": "func",
+    "sig": "std::uint16_t()",
+    "s": 1623888,
+    "a": 1932528
+  },
+  {
+    "n": "TESForm::AddCompileIndex",
+    "t": "func",
+    "sig": "static void(FormID& a_id, TESFile* a_file)",
+    "s": 1660896,
+    "a": 1971776
+  },
+  {
+    "n": "TESFullName::SetFullName",
+    "t": "func",
+    "sig": "void(const char* a_name)",
+    "s": 3213232,
+    "a": 3569328
+  },
+  {
+    "n": "TESIdleForm::CheckConditions",
+    "t": "func",
+    "sig": "bool(Actor* a_actor, TESObjectREFR* a_target, bool a_checkParentIdle)",
+    "s": 3506944,
+    "a": 3869232
+  },
+  {
+    "n": "TESImageSpaceModifier::TriggerIfNotActive",
+    "t": "func",
+    "sig": "ImageSpaceModifierInstanceForm*(float a_strength, NiAVObject* a_target)",
+    "s": 2411216,
+    "a": 2745152
+  },
+  {
+    "n": "TESObjectDOOR::LinkRandomTeleportDoors",
+    "t": "func",
+    "sig": "static void(TESObjectREFR* a_door, TESObjectREFR* a_linkedDoor)",
+    "s": 2287824,
+    "a": 2619584
+  },
+  {
+    "n": "TESObjectLIGH::GenDynamic",
+    "t": "func",
+    "sig": "NiLight*(RE::TESObjectREFR* a_ref, RE::NiNode* a_node, char a_forceDynamic, char a_useLightRadius, char a_affectRefOnly)",
+    "s": 2224048,
+    "a": 2550864
+  },
+  {
+    "n": "TESPackage::CreatePackage",
+    "t": "func",
+    "sig": "static TESPackage*(PACKAGE_PROCEDURE_TYPE a_type)",
+    "s": 4409536,
+    "a": 4781408
+  },
+  {
+    "n": "TESPackage::SetPackType",
+    "t": "func",
+    "sig": "void(PACKAGE_PROCEDURE_TYPE a_type)",
+    "s": 4412400,
+    "a": 4784880
+  },
+  {
+    "n": "TESWaterSystem::AddRipple",
+    "t": "func",
+    "sig": "void(const NiPoint3& a_pos, float a_scale)",
+    "s": 5015680,
+    "a": 5396192
+  },
+  {
+    "n": "TutorialMenu::OpenTutorialMenu",
+    "t": "func",
+    "sig": "static void(DEFAULT_OBJECT a_tutorial)",
+    "s": 9240224,
+    "a": 9895488
+  },
+  {
+    "n": "VATS::SetMagicTimeSlowdown",
+    "t": "func",
+    "sig": "void(float a_magicTimeSlowdown, float a_playerMagicTimeSlowdown)",
+    "s": 7705440,
+    "a": 8336704
+  },
+  {
+    "n": "WeaponEnchantmentController::SetAttachRoot",
+    "t": "func",
+    "sig": "void()",
+    "s": 5626384,
+    "a": 6087776
+  },
+  {
+    "n": "ActiveEffect::Dispel",
+    "t": "func",
+    "sig": "void(bool a_force)",
+    "s": 5497728,
+    "a": 5949568
+  },
+  {
+    "n": "ActiveEffect::GetMagnitude",
+    "t": "func",
+    "sig": "float()",
+    "s": 5497120,
+    "a": 5948784
+  },
+  {
+    "n": "ActiveEffectFactory::CheckCast",
+    "t": "func",
+    "sig": "bool(MagicCaster* a_caster, MagicItem* a_spell, Effect* a_effect, MagicSystem::CannotCastReason& a_reason)",
+    "s": 5580272,
+    "a": 6037648
+  },
+  {
+    "n": "ActiveEffectFactory::ReportAddTargetFailure",
+    "t": "func",
+    "sig": "void(CheckTargetArgs& a_args)",
+    "s": 5591504,
+    "a": 6050672
+  },
+  {
+    "n": "Actor::AddCastPower",
+    "t": "func",
+    "sig": "void(SpellItem* a_power)",
+    "s": 6489104,
+    "a": 7086864
+  },
+  {
+    "n": "Actor::AddDeathItems",
+    "t": "func",
+    "sig": "void()",
+    "s": 6093504,
+    "a": 6685040
+  },
+  {
+    "n": "Actor::AddSpell",
+    "t": "func",
+    "sig": "bool(SpellItem* a_spell)",
+    "s": 6485344,
+    "a": 7082656
+  },
+  {
+    "n": "Actor::AddToFaction",
+    "t": "func",
+    "sig": "void(TESFaction* a_faction, std::int8_t a_rank)",
+    "s": 6259760,
+    "a": 6861584
+  },
+  {
+    "n": "Actor::CanAttackActor",
+    "t": "func",
+    "sig": "bool(Actor* a_actor)",
+    "s": 6190336,
+    "a": 6788512
+  },
+  {
+    "n": "Actor::CanUseIdle",
+    "t": "func",
+    "sig": "bool(TESIdleForm* a_idle)",
+    "s": 6096512,
+    "a": 6688064
+  },
+  {
+    "n": "Actor::CastPermanentMagic",
+    "t": "func",
+    "sig": "void(bool a_wornItemEnchantments, bool a_baseSpells, bool a_raceSpells, bool a_everyActorAbility)",
+    "s": 6493424,
+    "a": 7091552
+  },
+  {
+    "n": "Actor::ClearDeathState",
+    "t": "func",
+    "sig": "void()",
+    "s": 6218768,
+    "a": 6818800
+  },
+  {
+    "n": "Actor::Decapitate",
+    "t": "func",
+    "sig": "bool()",
+    "s": 6235440,
+    "a": 6836544
+  },
+  {
+    "n": "Actor::DeselectSpell",
+    "t": "func",
+    "sig": "void(SpellItem* a_spell)",
+    "s": 6497008,
+    "a": 7095040
+  },
+  {
+    "n": "Actor::DispelAlteredStates",
+    "t": "func",
+    "sig": "void(EffectArchetype a_exception)",
+    "s": 6507392,
+    "a": 7105936
+  },
+  {
+    "n": "Actor::DispelWornItemEnchantments",
+    "t": "func",
+    "sig": "void()",
+    "s": 5599008,
+    "a": 6057808
+  },
+  {
+    "n": "Actor::DoReset3D",
+    "t": "func",
+    "sig": "void(bool a_updateWeight)",
+    "s": 6893840,
+    "a": 7499536
+  },
+  {
+    "n": "Actor::DoDamage",
+    "t": "func",
+    "sig": "bool(float a_healthDamage, Actor* a_source, bool a_dontAdjustDifficulty)",
+    "s": 6120192,
+    "a": 6712608
+  },
+  {
+    "n": "Actor::EndInterruptPackage",
+    "t": "func",
+    "sig": "void(bool a_skipDialogue)",
+    "s": 6170608,
+    "a": 6768064
+  },
+  {
+    "n": "Actor::EvaluatePackage",
+    "t": "func",
+    "sig": "void(bool a_immediate, bool a_resetAI)",
+    "s": 6140688,
+    "a": 6737136
+  },
+  {
+    "n": "Actor::GetActorValueModifier",
+    "t": "func",
+    "sig": "float(ACTOR_VALUE_MODIFIER a_modifier, ActorValue a_value)",
+    "s": 6427472,
+    "a": 7023040
+  },
+  {
+    "n": "Actor::GetCollisionFilterInfo",
+    "t": "func",
+    "sig": "void(CFilter& a_outCollisionFilterInfo)",
+    "s": 6208912,
+    "a": 6807840
+  },
+  {
+    "n": "Actor::GetFactionRank",
+    "t": "func",
+    "sig": "std::int32_t(TESFaction* a_faction, bool a_isPlayer)",
+    "s": 6257184,
+    "a": 6858912
+  },
+  {
+    "n": "Actor::GetFactionReaction",
+    "t": "func",
+    "sig": "FIGHT_REACTION(Actor* a_other)",
+    "s": 6254960,
+    "a": 6856496
+  },
+  {
+    "n": "Actor::GetLevel",
+    "t": "func",
+    "sig": "std::uint16_t()",
+    "s": 6120160,
+    "a": 6712576
+  },
+  {
+    "n": "Actor::GetMount",
+    "t": "func",
+    "sig": "bool(NiPointer<Actor>& a_outMount)",
+    "s": 6482880,
+    "a": 7079936
+  },
+  {
+    "n": "Actor::GetMoveDirectionRelativeToFacing",
+    "t": "func",
+    "sig": "double()",
+    "s": 6327616,
+    "a": 6932016
+  },
+  {
+    "n": "Actor::GetMountedBy",
+    "t": "func",
+    "sig": "bool(NiPointer<Actor>& a_outRider)",
+    "s": 6483152,
+    "a": 7080208
+  },
+  {
+    "n": "Actor::GetSoulSize",
+    "t": "func",
+    "sig": "SOUL_LEVEL()",
+    "s": 6506656,
+    "a": 7105152
+  },
+  {
+    "n": "Actor::GetTotalCarryWeight",
+    "t": "func",
+    "sig": "float()",
+    "s": 6166624,
+    "a": 6763696
+  },
+  {
+    "n": "Actor::GetVoiceRecoveryTime",
+    "t": "func",
+    "sig": "float()",
+    "s": 6505968,
+    "a": 7104448
+  },
+  {
+    "n": "Actor::GetWarmthRating",
+    "t": "func",
+    "sig": "float()",
+    "s": 3921392,
+    "a": 4287232
+  },
+  {
+    "n": "Actor::HasLineOfSight",
+    "t": "func",
+    "sig": "bool(TESObjectREFR* a_ref, bool& a_arg2)",
+    "s": 9553440,
+    "a": 10199328
+  },
+  {
+    "n": "Actor::HasOutfitItems",
+    "t": "func",
+    "sig": "bool(BGSOutfit* a_outfit)",
+    "s": 2678000,
+    "a": 3021392
+  },
+  {
+    "n": "Actor::HasPerk",
+    "t": "func",
+    "sig": "bool(BGSPerk* a_perk)",
+    "s": 6266416,
+    "a": 6868464
+  },
+  {
+    "n": "Actor::HasShout",
+    "t": "func",
+    "sig": "bool(TESShout* a_shout)",
+    "s": 6499664,
+    "a": 7097488
+  },
+  {
+    "n": "Actor::HasSpell",
+    "t": "func",
+    "sig": "bool(SpellItem* a_spell)",
+    "s": 6499600,
+    "a": 7097424
+  },
+  {
+    "n": "Actor::InitiateDoNothingPackage",
+    "t": "func",
+    "sig": "void()",
+    "s": 6141856,
+    "a": 6738336
+  },
+  {
+    "n": "Actor::InterruptCast",
+    "t": "func",
+    "sig": "void(bool a_restoreMagicka)",
+    "s": 6495360,
+    "a": 7093200
+  },
+  {
+    "n": "Actor::IsAttacking",
+    "t": "func",
+    "sig": "bool()",
+    "s": 6452384,
+    "a": 7048864
+  },
+  {
+    "n": "Actor::IsBlocking",
+    "t": "func",
+    "sig": "bool()",
+    "s": 6327024,
+    "a": 6931424
+  },
+  {
+    "n": "Actor::IsCasting",
+    "t": "func",
+    "sig": "bool(MagicItem* a_spell)",
+    "s": 6495600,
+    "a": 7093440
+  },
+  {
+    "n": "Actor::IsCombatTarget",
+    "t": "func",
+    "sig": "bool(Actor* a_other)",
+    "s": 6446288,
+    "a": 7042272
+  },
+  {
+    "n": "Actor::IsCurrentShout",
+    "t": "func",
+    "sig": "bool(SpellItem* a_power)",
+    "s": 6506112,
+    "a": 7104592
+  },
+  {
+    "n": "Actor::IsGhost",
+    "t": "func",
+    "sig": "bool()"
+  },
+  {
+    "n": "Actor::IsHostileToActor",
+    "t": "func",
+    "sig": "bool(Actor* a_actor)"
+  },
+  {
+    "n": "Actor::IsInCastPowerList",
+    "t": "func",
+    "sig": "bool(SpellItem* a_power)",
+    "s": 6490512,
+    "a": 7088272
+  },
+  {
+    "n": "Actor::IsInMidair",
+    "t": "func",
+    "sig": "bool()",
+    "s": 6100512,
+    "a": 6692304
+  },
+  {
+    "n": "Actor::IsInRagdollState",
+    "t": "func",
+    "sig": "bool()",
+    "s": 6173616,
+    "a": 6771024
+  },
+  {
+    "n": "Actor::IsLeveled",
+    "t": "func",
+    "sig": "bool()",
+    "s": 2782960,
+    "a": 3125296
+  },
+  {
+    "n": "Actor::IsLimbGone",
+    "t": "func",
+    "sig": "bool(std::uint32_t a_limb)",
+    "s": 2707552,
+    "a": 3051984
+  },
+  {
+    "n": "Actor::IsMoving",
+    "t": "func",
+    "sig": "bool()",
+    "s": 6327088,
+    "a": 6931488
+  },
+  {
+    "n": "Actor::IsOverEncumbered",
+    "t": "func",
+    "sig": "bool()",
+    "s": 6166704,
+    "a": 6763776
+  },
+  {
+    "n": "Actor::IsPowerAttacking",
+    "t": "func",
+    "sig": "bool()",
+    "s": 6452480,
+    "a": 7048960
+  },
+  {
+    "n": "Actor::IsRunning",
+    "t": "func",
+    "sig": "bool()",
+    "s": 6099344,
+    "a": 6690944
+  },
+  {
+    "n": "Actor::KillImmediate",
+    "t": "func",
+    "sig": "void()",
+    "s": 6272576,
+    "a": 6874688
+  },
+  {
+    "n": "Actor::PlayASound",
+    "t": "func",
+    "sig": "void(BSSoundHandle& a_result, FormID a_formID, bool a_arg3, std::uint32_t a_flags)",
+    "s": 6275136,
+    "a": 6877360
+  },
+  {
+    "n": "Actor::ProcessVATSAttack",
+    "t": "func",
+    "sig": "void(MagicCaster* a_caster, bool a_hasTargetAnim, TESObjectREFR* a_target, bool a_leftHand)",
+    "s": 7137056,
+    "a": 7744000
+  },
+  {
+    "n": "Actor::RemoveCastScroll",
+    "t": "func",
+    "sig": "void(SpellItem* a_spell, MagicSystem::CastingSource a_source)",
+    "s": 6491968,
+    "a": 7089808
+  },
+  {
+    "n": "Actor::RemoveFromFaction",
+    "t": "func",
+    "sig": "void(RE::TESFaction* a_faction)",
+    "s": 6260112,
+    "a": 6861936
+  },
+  {
+    "n": "Actor::RemoveSpell",
+    "t": "func",
+    "sig": "bool(SpellItem* a_spell)",
+    "s": 6485792,
+    "a": 7083184
+  },
+  {
+    "n": "Actor::RequestDetectionLevel",
+    "t": "func",
+    "sig": "std::int32_t(Actor* a_target, DETECTION_PRIORITY a_priority)",
+    "s": 6277536,
+    "a": 6879728
+  },
+  {
+    "n": "Actor::SetHeading",
+    "t": "func",
+    "sig": "void(float a_angle)",
+    "s": 6098880,
+    "a": 6690448
+  },
+  {
+    "n": "Actor::SetLifeState",
+    "t": "func",
+    "sig": "void(ACTOR_LIFE_STATE a_lifeState)",
+    "s": 6217456,
+    "a": 6817600
+  },
+  {
+    "n": "Actor::SetLooking",
+    "t": "func",
+    "sig": "void(float a_angle)",
+    "s": 6217040,
+    "a": 6816752
+  },
+  {
+    "n": "Actor::StealAlarm",
+    "t": "func",
+    "sig": "void(TESObjectREFR* a_ref, TESForm* a_object, std::int32_t a_num, std::int32_t a_total, TESForm* a_owner, bool a_allowWarning)",
+    "s": 6150000,
+    "a": 6746912
+  },
+  {
+    "n": "Actor::StopInteractingQuick",
+    "t": "func",
+    "sig": "void(bool a_unk02)",
+    "s": 6480784,
+    "a": 7077776
+  },
+  {
+    "n": "Actor::StopMoving",
+    "t": "func",
+    "sig": "void(float a_delta)",
+    "s": 6292480,
+    "a": 6894816
+  },
+  {
+    "n": "Actor::SwitchRace",
+    "t": "func",
+    "sig": "void(TESRace* a_race, bool a_player)",
+    "s": 6321792,
+    "a": 6925808
+  },
+  {
+    "n": "Actor::TrespassAlarm",
+    "t": "func",
+    "sig": "void(TESObjectREFR* a_ref, TESForm* a_ownership, std::int32_t a_crime)",
+    "s": 6157872,
+    "a": 6754736
+  },
+  {
+    "n": "Actor::UpdateArmorAbility",
+    "t": "func",
+    "sig": "void(TESForm* a_armor, ExtraDataList* a_extraData)",
+    "s": 6493024,
+    "a": 7091056
+  },
+  {
+    "n": "Actor::UpdateAwakeSound",
+    "t": "func",
+    "sig": "void(NiAVObject* a_obj3D)",
+    "s": 6328320,
+    "a": 6932720
+  },
+  {
+    "n": "Actor::UpdateWeaponAbility",
+    "t": "func",
+    "sig": "void(TESForm* a_weapon, ExtraDataList* a_extraData, bool a_leftHand)",
+    "s": 6493136,
+    "a": 7091168
+  },
+  {
+    "n": "Actor::VisitSpells",
+    "t": "func",
+    "sig": "void(ForEachSpellVisitor& a_visitor)",
+    "s": 6499168,
+    "a": 7096992
+  },
+  {
+    "n": "Actor::CalculateCurrentVendorFaction",
+    "t": "func",
+    "sig": "void()",
+    "s": 6137920,
+    "a": 6734416
+  },
+  {
+    "n": "Actor::CalcEquippedWeight",
+    "t": "func",
+    "sig": "float()",
+    "s": 6353088,
+    "a": 6959920
+  },
+  {
+    "n": "Actor::AddWornOutfit",
+    "t": "func",
+    "sig": "void(BGSOutfit* a_outfit, bool a_forceUpdate)",
+    "s": 2678176,
+    "a": 3021568
+  },
+  {
+    "n": "Actor::RemoveOutfitItems",
+    "t": "func",
+    "sig": "void(BGSOutfit* a_outfit)",
+    "s": 2677712,
+    "a": 3021104
+  },
+  {
+    "n": "Actor::CalculateLOSLocation",
+    "t": "func",
+    "sig": "NiPoint3(ACTOR_LOS_LOCATION a_location)",
+    "s": 6280624,
+    "a": 6882688
+  },
+  {
+    "n": "ActorEquipManager::EquipObject",
+    "t": "func",
+    "sig": "void(Actor* a_actor, TESBoundObject* a_object, ExtraDataList* a_extraData, std::uint32_t a_count, const BGSEquipSlot* a_slot, bool a_queueEquip, bool a_forceEquip, bool a_playSounds, bool a_applyNow)",
+    "s": 6519424,
+    "a": 7116832
+  },
+  {
+    "n": "ActorEquipManager::EquipShout",
+    "t": "func",
+    "sig": "void(Actor* a_actor, TESShout* a_shout)",
+    "s": 6519968,
+    "a": 7117536
+  },
+  {
+    "n": "ActorEquipManager::EquipSpell",
+    "t": "func",
+    "sig": "void(Actor* a_actor, SpellItem* a_spell, const BGSEquipSlot* a_slot)",
+    "s": 6519744,
+    "a": 7117312
+  },
+  {
+    "n": "ActorEquipManager::UnequipObject",
+    "t": "func",
+    "sig": "bool(Actor* a_actor, TESBoundObject* a_object, ExtraDataList* a_extraData, std::uint32_t a_count, const BGSEquipSlot* a_slot, bool a_queueEquip, bool a_forceEquip, bool a_playSounds, bool a_applyNow, const BGSEquipSlot* a_slotToReplace)",
+    "s": 6521232,
+    "a": 7118864
+  },
+  {
+    "n": "ActorKill::GetEventSource",
+    "t": "func",
+    "sig": "static BSTEventSource<ActorKill::Event>*()",
+    "s": 6408320,
+    "a": 7004496
+  },
+  {
+    "n": "ActorValueList::GetActorValueInfo",
+    "t": "func",
+    "sig": "static ActorValueInfo*(ActorValue a_actorValue)",
+    "s": 4068384,
+    "a": 4439664
+  },
+  {
+    "n": "ActorValueList::LookupActorValueByName",
+    "t": "func",
+    "sig": "static ActorValue(const char* a_enumName)",
+    "s": 4068432,
+    "a": 4439712
+  },
+  {
+    "n": "ActorValueList::GetActorValueName",
+    "t": "func",
+    "sig": "const char*(ActorValue a_actorValue)",
+    "s": 4067632,
+    "a": 4438864
+  },
+  {
+    "n": "ActorValueOwner::GetArmorRatingSkillMultiplier",
+    "t": "func",
+    "sig": "float(float a_skillLevel)",
+    "s": 3926400,
+    "a": 4292816
+  },
+  {
+    "n": "ActorValueOwner::GetClampedActorValue",
+    "t": "func",
+    "sig": "float(ActorValue a_akValue)",
+    "s": 4084304,
+    "a": 4455680
+  },
+  {
+    "n": "AIProcess::AddToProcedureIndexRunning",
+    "t": "func",
+    "sig": "void(Actor* a_actor, std::uint32_t a_num)",
+    "s": 6571520,
+    "a": 7172032
+  },
+  {
+    "n": "AIProcess::ClearMuzzleFlashes",
+    "t": "func",
+    "sig": "void()",
+    "s": 6659072,
+    "a": 7260096
+  },
+  {
+    "n": "AIProcess::ComputeLastTimeProcessed",
+    "t": "func",
+    "sig": "void()",
+    "s": 6565712,
+    "a": 7165888
+  },
+  {
+    "n": "AIProcess::GetCurrentWeapon",
+    "t": "func",
+    "sig": "InventoryEntryData*(bool a_leftHand)",
+    "s": 6792160,
+    "a": 7396128
+  },
+  {
+    "n": "AIProcess::GetHeadtrackTarget",
+    "t": "func",
+    "sig": "ObjectRefHandle()",
+    "s": 6658256,
+    "a": 7259280
+  },
+  {
+    "n": "AIProcess::KnockExplosion",
+    "t": "func",
+    "sig": "void(Actor* a_actor, const NiPoint3& a_location, float a_magnitude)",
+    "s": 6804640,
+    "a": 7408768
+  },
+  {
+    "n": "AIProcess::RandomlyPlaySpecialIdles",
+    "t": "func",
+    "sig": "void(Actor* a_actor)",
+    "s": 6605616,
+    "a": 7206720
+  },
+  {
+    "n": "AIProcess::SetActorsDetectionEvent",
+    "t": "func",
+    "sig": "void(Actor* a_actor, const NiPoint3& a_location, std::int32_t a_soundLevel, TESObjectREFR* a_ref)",
+    "s": 6606320,
+    "a": 7207344
+  },
+  {
+    "n": "AIProcess::SetHeadtrackTarget",
+    "t": "func",
+    "sig": "void(Actor* a_owner, NiPoint3& a_targetPosition)",
+    "s": 6803744,
+    "a": 7408080
+  },
+  {
+    "n": "AIProcess::SetRunOncePackage",
+    "t": "func",
+    "sig": "void(TESPackage* a_package, Actor* a_actor)",
+    "s": 6798448,
+    "a": 7402544
+  },
+  {
+    "n": "AIProcess::SetupSpecialIdle",
+    "t": "func",
+    "sig": "bool(Actor* a_actor, DEFAULT_OBJECT a_action, TESIdleForm* a_idle, bool a_arg5, bool a_arg6, TESObjectREFR* a_target)",
+    "s": 6598976,
+    "a": 7200368
+  },
+  {
+    "n": "AIProcess::StopCurrentIdle",
+    "t": "func",
+    "sig": "void(Actor* a_actor, bool a_forceIdleStop)",
+    "s": 6600048,
+    "a": 7201408
+  },
+  {
+    "n": "AIProcess::Update3DModel_Impl",
+    "t": "func",
+    "sig": "void(Actor* a_actor)"
+  },
+  {
+    "n": "ArmorRatingVisitor::HaveNotVisitedArmor",
+    "t": "func",
+    "sig": "bool(TESObjectARMO* a_armor)",
+    "s": 6898848,
+    "a": 7504480
+  },
+  {
+    "n": "ArmorRatingVisitor::VisitArmor",
+    "t": "func",
+    "sig": "void(TESObjectARMO* a_armor)",
+    "s": 6898688,
+    "a": 7504336
+  },
+  {
+    "n": "ArmorRatingVisitorBase::Visit",
+    "t": "func",
+    "sig": "BSContainer::ForEachResult(InventoryEntryData* a_entryData)",
+    "s": 6898944,
+    "a": 7504592
+  },
+  {
+    "n": "BGSCreatedObjectManager::AddArmorEnchantment",
+    "t": "func",
+    "sig": "EnchantmentItem*(BSTArray<Effect>& a_effects)",
+    "s": 5894544,
+    "a": 6473424
+  },
+  {
+    "n": "BGSCreatedObjectManager::AddWeaponEnchantment",
+    "t": "func",
+    "sig": "EnchantmentItem*(BSTArray<Effect>& a_effects)",
+    "s": 5894384,
+    "a": 6473264
+  },
+  {
+    "n": "BGSListForm::AddForm",
+    "t": "func",
+    "sig": "void(TESForm* a_form)",
+    "s": 2905040,
+    "a": 3251744
+  },
+  {
+    "n": "BGSOpenCloseForm::GetOpenState",
+    "t": "func",
+    "sig": "static OPEN_STATE(const TESObjectREFR* a_ref)",
+    "s": 1611600,
+    "a": 1919568
+  },
+  {
+    "n": "BGSOpenCloseForm::SetOpenState",
+    "t": "func",
+    "sig": "static void(TESObjectREFR* a_ref, bool a_open, bool a_snap)",
+    "s": 1610992,
+    "a": 1918960
+  },
+  {
+    "n": "BGSSaveLoadFileEntry::PopulateFileEntryData",
+    "t": "func",
+    "sig": "bool()",
+    "s": 5740672,
+    "a": 6299744
+  },
+  {
+    "n": "BGSSaveLoadManager::GenerateCharacterID",
+    "t": "func",
+    "sig": "void()",
+    "s": 5802208,
+    "a": 6364512
+  },
+  {
+    "n": "BGSSaveLoadManager::PopulateSaveList",
+    "t": "func",
+    "sig": "bool()",
+    "s": 5803216,
+    "a": 6365280
+  },
+  {
+    "n": "BGSSaveLoadManager::LoadMostRecentSaveGame",
+    "t": "func",
+    "sig": "bool()",
+    "s": 5803920,
+    "a": 6365952
+  },
+  {
+    "n": "BGSSaveLoadManager::Save_Impl",
+    "t": "func",
+    "sig": "bool(std::int32_t a_deviceID, std::uint32_t a_outputStats, const char* a_fileName)"
+  },
+  {
+    "n": "BGSSaveLoadManager::Load_Impl",
+    "t": "func",
+    "sig": "bool(const char* a_fileName, std::int32_t a_deviceID, std::uint32_t a_outputStats, bool a_checkForMods)"
+  },
+  {
+    "n": "BGSStoryTeller::BeginShutDownQuest",
+    "t": "func",
+    "sig": "void(TESQuest* a_quest)",
+    "s": 5079200,
+    "a": 5451344
+  },
+  {
+    "n": "BGSStoryTeller::BeginStartUpQuest",
+    "t": "func",
+    "sig": "void(TESQuest* a_quest)",
+    "s": 5078912,
+    "a": 5451040
+  },
+  {
+    "n": "bhkRigidBody::SetAngularImpulse",
+    "t": "func",
+    "sig": "void(const hkVector4& a_impulse)",
+    "s": 14367024,
+    "a": 15283232
+  },
+  {
+    "n": "bhkRigidBody::SetAngularVelocity",
+    "t": "func",
+    "sig": "void(const hkVector4& a_newVel)",
+    "s": 14366656,
+    "a": 15282864
+  },
+  {
+    "n": "bhkRigidBody::SetLinearImpulse",
+    "t": "func",
+    "sig": "void(const hkVector4& a_impulse)",
+    "s": 14366864,
+    "a": 15283072
+  },
+  {
+    "n": "bhkRigidBody::SetLinearVelocity",
+    "t": "func",
+    "sig": "void(const hkVector4& a_newVel)",
+    "s": 14366448,
+    "a": 15282656
+  },
+  {
+    "n": "BipedAnim::RemoveAllParts",
+    "t": "func",
+    "sig": "void()",
+    "s": 1860000,
+    "a": 2172256
+  },
+  {
+    "n": "BipedAnim::GetShieldObject",
+    "t": "func",
+    "sig": "BIPOBJECT*()",
+    "s": 1873984,
+    "a": 2187376
+  },
+  {
+    "n": "BipedAnim::Dtor",
+    "t": "func",
+    "sig": "void()",
+    "s": 1859744,
+    "a": 2172000
+  },
+  {
+    "n": "BookMenu::OpenBookMenu",
+    "t": "func",
+    "sig": "static void(const BSString& a_description, const ExtraDataList* a_extraList, TESObjectREFR* a_ref, TESObjectBOOK* a_book, const NiPoint3& a_pos, const NiMatrix3& a_rot, float a_scale, bool a_useDefaultPos)",
+    "s": 8749792,
+    "a": 9376768
+  },
+  {
+    "n": "BooksRead::GetEventSource",
+    "t": "func",
+    "sig": "static BSTEventSource<BooksRead::Event>*()",
+    "s": 2271424,
+    "a": 2602000
+  },
+  {
+    "n": "BSReadWriteLock::LockForRead",
+    "t": "func",
+    "sig": "void()",
+    "s": 12612304,
+    "a": 13406400
+  },
+  {
+    "n": "BSReadWriteLock::UnlockForRead",
+    "t": "func",
+    "sig": "void()",
+    "s": 12613008,
+    "a": 13407104
+  },
+  {
+    "n": "BSReadWriteLock::LockForWrite",
+    "t": "func",
+    "sig": "void()",
+    "s": 12612432,
+    "a": 13406528
+  },
+  {
+    "n": "BSReadWriteLock::UnlockForWrite",
+    "t": "func",
+    "sig": "void()",
+    "s": 12613024,
+    "a": 13407120
+  },
+  {
+    "n": "BSAudioManager::GetSingleton",
+    "t": "func",
+    "sig": "static BSAudioManager*()",
+    "s": 12510592,
+    "a": 13304976
+  },
+  {
+    "n": "BSAudioManager::BuildSoundDataFromDescriptor",
+    "t": "func",
+    "sig": "bool(BSSoundHandle& a_soundHandle, BSISoundDescriptor* a_descriptor, std::uint32_t a_flags)",
+    "s": 12513456,
+    "a": 13308320
+  },
+  {
+    "n": "BSAudioManager::BuildSoundDataFromEditorID",
+    "t": "func",
+    "sig": "void(BSSoundHandle& a_soundHandle, const char* a_editorID, std::uint32_t a_flags)",
+    "s": 12513312,
+    "a": 13308176
+  },
+  {
+    "n": "BSAudioManager::BuildSoundDataFromFile",
+    "t": "func",
+    "sig": "void(BSSoundHandle& a_soundHandle, const BSResource::ID& a_file, std::uint32_t a_flags, std::uint32_t a_priority)",
+    "s": 12513024,
+    "a": 13307888
+  },
+  {
+    "n": "BSDirectInputManager::CreateDeviceWithGUID",
+    "t": "func",
+    "sig": "REX::W32::IDirectInputDevice8A*(REX::W32::GUID* a_guid)",
+    "s": 12674528,
+    "a": 13477376
+  },
+  {
+    "n": "BSDirectInputManager::GetDeviceState",
+    "t": "func",
+    "sig": "void(REX::W32::IDirectInputDevice8A* a_device, std::uint32_t a_size, void* a_outData)",
+    "s": 12674640,
+    "a": 13477488
+  },
+  {
+    "n": "BSDirectInputManager::GetDeviceData",
+    "t": "func",
+    "sig": "void(REX::W32::IDirectInputDevice8A* a_device, std::uint32_t* a_dataSize, REX::W32::DIDEVICEOBJECTDATA** a_outData)",
+    "s": 12674768,
+    "a": 13477616
+  },
+  {
+    "n": "BSDirectInputManager::ReleaseDevice",
+    "t": "func",
+    "sig": "void(REX::W32::IDirectInputDevice8A* a_device)",
+    "s": 12674592,
+    "a": 13477440
+  },
+  {
+    "n": "BSFaceGenAnimationData::SetExpressionOverride",
+    "t": "func",
+    "sig": "void(std::uint32_t a_idx, float a_value)",
+    "s": 3948288,
+    "a": 4314432
+  },
+  {
+    "n": "BSFaceGenAnimationData::Reset",
+    "t": "func",
+    "sig": "void(float a_timer, bool a_resetExpression, bool a_resetModifierAndPhoneme, bool a_resetCustom, bool a_closeEyes)",
+    "s": 3946720,
+    "a": 4312640
+  },
+  {
+    "n": "BSFaceGenKeyframeMultiple::GetExpressionName",
+    "t": "func",
+    "sig": "const char*(std::uint32_t a_expression)",
+    "s": 4037792,
+    "a": 4405376
+  },
+  {
+    "n": "BSFaceGenKeyframeMultiple::GetModifierName",
+    "t": "func",
+    "sig": "const char*(std::uint32_t a_modifier)",
+    "s": 4037824,
+    "a": 4405408
+  },
+  {
+    "n": "BSFaceGenKeyframeMultiple::GetPhonemeName",
+    "t": "func",
+    "sig": "const char*(std::uint32_t a_phoneme)",
+    "s": 4037856,
+    "a": 4405440
+  },
+  {
+    "n": "BSFaceGenKeyframeMultiple::GetCustomName",
+    "t": "func",
+    "sig": "const char*(std::uint32_t a_custom)",
+    "s": 4037888,
+    "a": 4405472
+  },
+  {
+    "n": "BSInputDevice::LoadControlsDefinitionFile",
+    "t": "func",
+    "sig": "bool(const char* a_fileName)",
+    "s": 12684336,
+    "a": 13487056
+  },
+  {
+    "n": "BSInputDevice::SetButtonState",
+    "t": "func",
+    "sig": "void(std::uint32_t a_buttonId, float a_timeSinceLastPoll, bool a_buttonWasPressed, bool a_buttonIsPressed)",
+    "s": 12685552,
+    "a": 13488144
+  },
+  {
+    "n": "BSInputDeviceFactory::CreateInputDevice",
+    "t": "func",
+    "sig": "static BSIInputDevice*(INPUT_DEVICE a_deviceType)",
+    "s": 12683264,
+    "a": 13485984
+  },
+  {
+    "n": "BSInputDeviceManager::PollInputDevices",
+    "t": "func",
+    "sig": "void(float a_secsSinceLastFrame)",
+    "s": 12669104,
+    "a": 13471552
+  },
+  {
+    "n": "BSModelDB::Demand",
+    "t": "func",
+    "sig": "BSResource::ErrorCode(const char* a_modelPath, NiPointer<NiNode>& a_modelOut, const DBTraits::ArgsType& a_args)",
+    "s": 13824544,
+    "a": 14696160
+  },
+  {
+    "n": "BSPCGamepadDeviceHandler::InitializeDelegate",
+    "t": "func",
+    "sig": "void()",
+    "s": 12687856,
+    "a": 13490192
+  },
+  {
+    "n": "BSResourceNiBinaryStream::seek",
+    "t": "func",
+    "sig": "void(std::int32_t a_numBytes)"
+  },
+  {
+    "n": "BSResourceNiBinaryStream::set_endian_swap",
+    "t": "func",
+    "sig": "void(bool a_doSwap)"
+  },
+  {
+    "n": "BSResourceNiBinaryStream::ctor",
+    "t": "func",
+    "sig": "BSResourceNiBinaryStream*(const char* a_name, bool a_writeable, BSResource::Location* a_optionalStart)"
+  },
+  {
+    "n": "BSResourceNiBinaryStream::dtor",
+    "t": "func",
+    "sig": "void()"
+  },
+  {
+    "n": "BSScaleformManager::IsValidName",
+    "t": "func",
+    "sig": "bool(const char* a_name)",
+    "s": 15527472,
+    "a": 16451520
+  },
+  {
+    "n": "BSScaleformManager::FileExists",
+    "t": "func",
+    "sig": "static bool(const char* a_fileName)",
+    "s": 15483936,
+    "a": 16468384
+  },
+  {
+    "n": "BSScaleformManager::LoadMovie",
+    "t": "func",
+    "sig": "bool(IMenu* a_menu, GPtr<GFxMovieView>& a_viewOut, const char* a_fileName, ScaleModeType a_mode, float a_backGroundAlpha)",
+    "s": 15525776,
+    "a": 16449808
+  },
+  {
+    "n": "BSScaleformTranslator::GetCachedString",
+    "t": "func",
+    "sig": "static void(wchar_t** a_pOut, wchar_t* a_bufIn, std::uint32_t a_unused)",
+    "s": 12753152
+  },
+  {
+    "n": "ObjectBindPolicy::BindObject",
+    "t": "func",
+    "sig": "void(BSTSmartPointer<Object>& a_objectPtr, VMHandle a_handle)"
+  },
+  {
+    "n": "BSShaderProperty::SetMaterial",
+    "t": "func",
+    "sig": "void(BSShaderMaterial* a_material, bool a_unk1)",
+    "s": 19471680,
+    "a": 21479408
+  },
+  {
+    "n": "BSShaderProperty::SetFlags",
+    "t": "func",
+    "sig": "void(EShaderPropertyFlag8 a_flag, bool a_set)",
+    "s": 19471408,
+    "a": 21479136
+  },
+  {
+    "n": "BSShaderTextureSet::Ctor",
+    "t": "func",
+    "sig": "BSShaderTextureSet*()",
+    "s": 19698464
+  },
+  {
+    "n": "BSShaderTextureSet::Create",
+    "t": "func",
+    "sig": "static BSShaderTextureSet*()",
+    "s": 20356043
+  },
+  {
+    "n": "BSSoundHandle::FadeInPlay",
+    "t": "func",
+    "sig": "bool(std::uint16_t a_fadeTimeMS)",
+    "s": 12508640,
+    "a": 13303056
+  },
+  {
+    "n": "BSSoundHandle::FadeOutAndRelease",
+    "t": "func",
+    "sig": "bool(std::uint16_t a_fadeTimeMS)",
+    "s": 12508720,
+    "a": 13303136
+  },
+  {
+    "n": "BSSoundHandle::GetDuration",
+    "t": "func",
+    "sig": "std::uint64_t()",
+    "s": 12507376,
+    "a": 13301776
+  },
+  {
+    "n": "BSSoundHandle::IsPlaying",
+    "t": "func",
+    "sig": "bool()",
+    "s": 12506688,
+    "a": 13301088
+  },
+  {
+    "n": "BSSoundHandle::IsValid",
+    "t": "func",
+    "sig": "bool()",
+    "s": 12506768,
+    "a": 13301168
+  },
+  {
+    "n": "BSSoundHandle::SetFrequency",
+    "t": "func",
+    "sig": "bool(float a_frequency)",
+    "s": 12507136,
+    "a": 13301536
+  },
+  {
+    "n": "BSSoundHandle::SetPosition",
+    "t": "func",
+    "sig": "bool(NiPoint3 a_pos)",
+    "s": 12507424,
+    "a": 13301824
+  },
+  {
+    "n": "BSSoundHandle::SetObjectToFollow",
+    "t": "func",
+    "sig": "void(NiAVObject* a_node)",
+    "s": 12507920,
+    "a": 13302320
+  },
+  {
+    "n": "BSSoundHandle::SetOutputModel",
+    "t": "func",
+    "sig": "void(const BSISoundOutputModel* a_outputModel)",
+    "s": 12506944,
+    "a": 13301344
+  },
+  {
+    "n": "BSSoundHandle::SetVolume",
+    "t": "func",
+    "sig": "bool(float a_volume)",
+    "s": 12507056,
+    "a": 13301456
+  },
+  {
+    "n": "BSSoundHandle::Stop",
+    "t": "func",
+    "sig": "bool()",
+    "s": 12506624,
+    "a": 13301024
+  },
+  {
+    "n": "BSSoundHandle::Play",
+    "t": "func",
+    "sig": "bool()",
+    "s": 12506416,
+    "a": 13300816
+  },
+  {
+    "n": "BSSoundHandle::Pause",
+    "t": "func",
+    "sig": "bool()",
+    "s": 12506560,
+    "a": 13300960
+  },
+  {
+    "n": "BucketTable::GetSingleton",
+    "t": "func",
+    "sig": "static BucketTable*()",
+    "s": 12756176,
+    "a": 13558064
+  },
+  {
+    "n": "MessageDataFactoryManager::GetSingleton",
+    "t": "func",
+    "sig": "static MessageDataFactoryManager*()",
+    "s": 3302496,
+    "a": 9926416
+  },
+  {
+    "n": "BSWin32SaveDataSystemUtility::GetSingleton",
+    "t": "func",
+    "sig": "static BSWin32SaveDataSystemUtility*()",
+    "s": 20181184,
+    "a": 22208816
+  },
+  {
+    "n": "BSWindModifier::Ctor",
+    "t": "func",
+    "sig": "BSWindModifier*()",
+    "s": 13882320,
+    "a": 14760176
+  },
+  {
+    "n": "Calendar::GetTimeDateString",
+    "t": "func",
+    "sig": "void(char* a_dest, std::uint32_t a_max, bool a_showYear)",
+    "s": 5924416,
+    "a": 6501984
+  },
+  {
+    "n": "ChestsLooted::GetEventSource",
+    "t": "func",
+    "sig": "static BSTEventSource<ChestsLooted::Event>*()",
+    "s": 8790368,
+    "a": 9434720
+  },
+  {
+    "n": "Console::SetSelectedRef_Impl",
+    "t": "func",
+    "sig": "void(ObjectRefHandle& a_handle)"
+  },
+  {
+    "n": "ConsoleLog::VPrint",
+    "t": "func",
+    "sig": "void(const char* a_fmt, std::va_list a_args)",
+    "s": 8766144,
+    "a": 9409056
+  },
+  {
+    "n": "ControlMap::PopInputContext",
+    "t": "func",
+    "sig": "void(InputContextID a_context)",
+    "s": 12655552,
+    "a": 13456688
+  },
+  {
+    "n": "ControlMap::PushInputContext",
+    "t": "func",
+    "sig": "void(InputContextID a_context)",
+    "s": 12655328,
+    "a": 13456464
+  },
+  {
+    "n": "CriticalHit::GetEventSource",
+    "t": "func",
+    "sig": "static BSTEventSource<CriticalHit::Event>*()",
+    "s": 6475856,
+    "a": 7072928
+  },
+  {
+    "n": "DisarmedEvent::GetEventSource",
+    "t": "func",
+    "sig": "static BSTEventSource<DisarmedEvent::Event>*()",
+    "s": 6408800,
+    "a": 7004976
+  },
+  {
+    "n": "DragonSoulsGained::GetEventSource",
+    "t": "func",
+    "sig": "static BSTEventSource<DragonSoulsGained::Event>*()",
+    "s": 6436368,
+    "a": 7031808
+  },
+  {
+    "n": "EnchantConstructMenu::RenameItem_Impl",
+    "t": "func",
+    "sig": "void(InventoryEntryData* a_entryData, ExtraDataList* a_extraList, const char* a_name)"
+  },
+  {
+    "n": "EnchantConstructMenu::UpdateInterface",
+    "t": "func",
+    "sig": "void()"
+  },
+  {
+    "n": "ExtraDataList::Add",
+    "t": "func",
+    "sig": "BSExtraData*(BSExtraData* a_toAdd)",
+    "s": 1251728,
+    "a": 1542880
+  },
+  {
+    "n": "ExtraDataList::HasQuestObjectAlias",
+    "t": "func",
+    "sig": "bool()",
+    "s": 1205840,
+    "a": 1496992
+  },
+  {
+    "n": "ExtraDataList::SetCount",
+    "t": "func",
+    "sig": "void(std::uint16_t a_count)",
+    "s": 1107312,
+    "a": 1421776
+  },
+  {
+    "n": "ExtraDataList::SetExtraFlags",
+    "t": "func",
+    "sig": "void(ExtraFlags::Flag a_flags, bool a_enable)",
+    "s": 1203584,
+    "a": 1495344
+  },
+  {
+    "n": "ExtraDataList::SetHeadingTargetRefHandle",
+    "t": "func",
+    "sig": "void(ObjectRefHandle& a_handle)",
+    "s": 1124096,
+    "a": 1435808
+  },
+  {
+    "n": "ExtraDataList::SetInventoryChanges",
+    "t": "func",
+    "sig": "void(InventoryChanges* a_changes)",
+    "s": 1111488,
+    "a": 1416688
+  },
+  {
+    "n": "ExtraDataList::SetLinkedRef",
+    "t": "func",
+    "sig": "void(TESObjectREFR* a_targetRef, BGSKeyword* a_keyword)",
+    "s": 1143536,
+    "a": 1450032
+  },
+  {
+    "n": "ExtraLinkedRef::IsNotEqual",
+    "t": "func",
+    "sig": "bool(const BSExtraData* a_rhs)",
+    "s": 1272048,
+    "a": 1562016
+  },
+  {
+    "n": "REFR_LOCK::GetLockLevel",
+    "t": "func",
+    "sig": "LOCK_LEVEL(const TESObjectREFR* a_containerRef)",
+    "s": 1264080,
+    "a": 1553952
+  },
+  {
+    "n": "ExtraTextDisplayData::GetDisplayName",
+    "t": "func",
+    "sig": "const char*(TESBoundObject* a_baseObject, float a_temperFactor)",
+    "s": 1296192,
+    "a": 1589504
+  },
+  {
+    "n": "FindMaxMagnitudeVisitor::Accept",
+    "t": "func",
+    "sig": "BSContainer::ForEachResult(ActiveEffect* a_effect)",
+    "s": 23292304,
+    "a": 25668752
+  },
+  {
+    "n": "GFxLoader::CreateMovie",
+    "t": "func",
+    "sig": "GFxMovieDef*(const char* a_filename, LoadConstants a_loadConstants, UPInt a_memoryArena)",
+    "s": 15581088,
+    "a": 16993840
+  },
+  {
+    "n": "GFxMovieView::InvokeNoReturn",
+    "t": "func",
+    "sig": "void(const char* a_methodName, const GFxValue* a_args, std::uint32_t a_numArgs)",
+    "s": 15564976,
+    "a": 16514192
+  },
+  {
+    "n": "GFxValue::ObjectInterface::ObjectAddRef",
+    "t": "func",
+    "sig": "void(GFxValue* a_val, void* a_obj)",
+    "s": 15511680,
+    "a": 16434928
+  },
+  {
+    "n": "GFxValue::ObjectInterface::ObjectRelease",
+    "t": "func",
+    "sig": "void(GFxValue* a_val, void* a_obj)",
+    "s": 15511776,
+    "a": 16435024
+  },
+  {
+    "n": "GFxValue::ObjectInterface::HasMember",
+    "t": "func",
+    "sig": "bool(void* a_data, const char* a_name, bool a_isDObj)",
+    "s": 15509024,
+    "a": 16432560
+  },
+  {
+    "n": "GFxValue::ObjectInterface::GetMember",
+    "t": "func",
+    "sig": "bool(void* a_data, const char* a_name, GFxValue* a_val, bool a_isDObj)",
+    "s": 15507792,
+    "a": 16431360
+  },
+  {
+    "n": "GFxValue::ObjectInterface::SetMember",
+    "t": "func",
+    "sig": "bool(void* a_data, const char* a_name, const GFxValue& a_value, bool a_isDObj)",
+    "s": 15518624,
+    "a": 16441872
+  },
+  {
+    "n": "GFxValue::ObjectInterface::Invoke",
+    "t": "func",
+    "sig": "bool(void* a_data, GFxValue* a_result, const char* a_name, const GFxValue* a_args, UPInt a_numArgs, bool isDObj)",
+    "s": 15509600,
+    "a": 16433184
+  },
+  {
+    "n": "GFxValue::ObjectInterface::DeleteMember",
+    "t": "func",
+    "sig": "bool(void* a_data, const char* a_name, bool a_isDObj)",
+    "s": 15504528,
+    "a": 16428176
+  },
+  {
+    "n": "GFxValue::ObjectInterface::VisitMembers",
+    "t": "func",
+    "sig": "void(void* a_data, ObjVisitor* a_visitor, bool a_isDObj)",
+    "s": 15521328,
+    "a": 16444224
+  },
+  {
+    "n": "GFxValue::ObjectInterface::GetArraySize",
+    "t": "func",
+    "sig": "std::uint32_t(void* a_data)",
+    "s": 15506384,
+    "a": 16429920
+  },
+  {
+    "n": "GFxValue::ObjectInterface::SetArraySize",
+    "t": "func",
+    "sig": "bool(void* a_data, std::uint32_t a_size)",
+    "s": 15514912,
+    "a": 16437616
+  },
+  {
+    "n": "GFxValue::ObjectInterface::GetElement",
+    "t": "func",
+    "sig": "bool(void* a_data, std::uint32_t a_idx, GFxValue* a_val)",
+    "s": 15507248,
+    "a": 16430816
+  },
+  {
+    "n": "GFxValue::ObjectInterface::SetElement",
+    "t": "func",
+    "sig": "bool(void* a_data, std::uint32_t a_idx, const GFxValue& a_val)",
+    "s": 15518048,
+    "a": 16441280
+  },
+  {
+    "n": "GFxValue::ObjectInterface::PushBack",
+    "t": "func",
+    "sig": "bool(void* a_data, const GFxValue& a_value)",
+    "s": 15512320,
+    "a": 16435568
+  },
+  {
+    "n": "GFxValue::ObjectInterface::RemoveElements",
+    "t": "func",
+    "sig": "bool(void* a_data, std::uint32_t a_idx, std::int32_t a_count)",
+    "s": 15513280,
+    "a": 16436736
+  },
+  {
+    "n": "GFxValue::ObjectInterface::GetDisplayInfo",
+    "t": "func",
+    "sig": "bool(void* a_data, DisplayInfo* a_info)",
+    "s": 15506464,
+    "a": 16430016
+  },
+  {
+    "n": "GFxValue::ObjectInterface::SetDisplayInfo",
+    "t": "func",
+    "sig": "bool(void* a_data, const DisplayInfo& a_info)",
+    "s": 15515056,
+    "a": 16437744
+  },
+  {
+    "n": "GFxValue::ObjectInterface::GetDisplayMatrix",
+    "t": "func",
+    "sig": "bool(void* a_data, GMatrix2D* a_mat)",
+    "s": 15507120,
+    "a": 16430688
+  },
+  {
+    "n": "GFxValue::ObjectInterface::SetDisplayMatrix",
+    "t": "func",
+    "sig": "bool(void* a_data, const GMatrix2D& a_mat)",
+    "s": 15517664,
+    "a": 16440880
+  },
+  {
+    "n": "GFxValue::ObjectInterface::GetCxform",
+    "t": "func",
+    "sig": "bool(void* a_data, GRenderer::Cxform* a_cx)",
+    "s": 15506400,
+    "a": 16429952
+  },
+  {
+    "n": "GFxValue::ObjectInterface::SetCxform",
+    "t": "func",
+    "sig": "bool(void* a_data, const GRenderer::Cxform& a_cx)",
+    "s": 15514960,
+    "a": 16437648
+  },
+  {
+    "n": "GFxValue::ObjectInterface::SetText",
+    "t": "func",
+    "sig": "bool(void* a_data, const char* a_text, bool a_isHTML)",
+    "s": 15518960,
+    "a": 16442128
+  },
+  {
+    "n": "GFxValue::ObjectInterface::AttachMovie",
+    "t": "func",
+    "sig": "bool(void* a_data, GFxValue* a_movieClip, const char* a_symbolName, const char* a_instanceName, std::int32_t a_depth, const GFxValue* a_initObj)",
+    "s": 15500192,
+    "a": 16423520
+  },
+  {
+    "n": "GFxValue::ObjectInterface::CreateEmptyMovieClip",
+    "t": "func",
+    "sig": "bool(void* a_data, GFxValue* a_movieClip, const char* a_instanceName, std::int32_t a_depth)",
+    "s": 15502096,
+    "a": 16425536
+  },
+  {
+    "n": "GFxValue::ObjectInterface::GotoAndPlay",
+    "t": "func",
+    "sig": "bool(void* a_data, const char* a_frame, bool a_stop)",
+    "s": 15508848,
+    "a": 16432400
+  },
+  {
+    "n": "GString::ctor",
+    "t": "func",
+    "sig": "GString*(const char* a_str)",
+    "s": 15546960,
+    "a": 16494928
+  },
+  {
+    "n": "hkpWorldObject::RemoveProperty",
+    "t": "func",
+    "sig": "void(std::uint32_t a_key)",
+    "s": 14302368,
+    "a": 15213936
+  },
+  {
+    "n": "hkpWorldObject::SetProperty",
+    "t": "func",
+    "sig": "void(std::uint32_t a_key, hkpPropertyValue a_value)",
+    "s": 11006176,
+    "a": 11799728
+  },
+  {
+    "n": "hkReferencedObject::AddReference",
+    "t": "func",
+    "sig": "void()",
+    "s": 10250032,
+    "a": 11043552
+  },
+  {
+    "n": "hkReferencedObject::RemoveReference",
+    "t": "func",
+    "sig": "void()",
+    "s": 10250224,
+    "a": 11043744
+  },
+  {
+    "n": "IAnimationGraphManagerHolder::GetGraphVariableNiPoint3",
+    "t": "func",
+    "sig": "bool(const BSFixedString& a_variableName, NiPoint3& a_out)",
+    "s": 5187104,
+    "a": 5551712
+  },
+  {
+    "n": "IAnimationGraphManagerHolder::SetGraphVariableBool",
+    "t": "func",
+    "sig": "bool(const BSFixedString& a_variableName, bool a_in)",
+    "s": 5179104,
+    "a": 5552016
+  },
+  {
+    "n": "IAnimationGraphManagerHolder::SetGraphVariableInt",
+    "t": "func",
+    "sig": "bool(const BSFixedString& a_variableName, std::int32_t a_in)",
+    "s": 5179136,
+    "a": 5552048
+  },
+  {
+    "n": "IAnimationGraphManagerHolder::SetGraphVariableFloat",
+    "t": "func",
+    "sig": "bool(const BSFixedString& a_variableName, float a_in)",
+    "s": 5179168,
+    "a": 5552080
+  },
+  {
+    "n": "IAnimationGraphManagerHolder::SetGraphVariableNiPoint3",
+    "t": "func",
+    "sig": "bool(const BSFixedString& a_variableName, NiPoint3& a_in)",
+    "s": 5179200,
+    "a": 5552112
+  },
+  {
+    "n": "IAnimationGraphManagerHolder::UpdateAnimationGraphManager",
+    "t": "func",
+    "sig": "bool(const BSAnimationUpdateData& a_updateData)",
+    "s": 5181760,
+    "a": 5554672
+  },
+  {
+    "n": "Inventory::GetEventSource",
+    "t": "func",
+    "sig": "static BSTEventSource<Inventory::Event>*()",
+    "s": 2028336,
+    "a": 2343632
+  },
+  {
+    "n": "Inventory3DManager::Begin3D",
+    "t": "func",
+    "sig": "void(INTERFACE_LIGHT_SCHEME a_scheme)",
+    "s": 8943104,
+    "a": 9597968
+  },
+  {
+    "n": "Inventory3DManager::End3D",
+    "t": "func",
+    "sig": "void()",
+    "s": 8943632,
+    "a": 9598496
+  },
+  {
+    "n": "Inventory3DManager::Render",
+    "t": "func",
+    "sig": "void()",
+    "s": 8943440,
+    "a": 9598304
+  },
+  {
+    "n": "Inventory3DManager::ToggleItemZoom",
+    "t": "func",
+    "sig": "bool()",
+    "s": 8945136,
+    "a": 9600288
+  },
+  {
+    "n": "Inventory3DManager::UnloadInventoryItem",
+    "t": "func",
+    "sig": "void()",
+    "s": 8944912,
+    "a": 9600064
+  },
+  {
+    "n": "InventoryChanges::GetArmorInSlot",
+    "t": "func",
+    "sig": "TESObjectARMO*(std::int32_t a_slot)",
+    "s": 1996144,
+    "a": 2310144
+  },
+  {
+    "n": "InventoryChanges::GetInventoryWeight",
+    "t": "func",
+    "sig": "float()",
+    "s": 2003248,
+    "a": 2318064
+  },
+  {
+    "n": "InventoryChanges::GetNextUniqueID",
+    "t": "func",
+    "sig": "std::uint16_t()",
+    "s": 2018608,
+    "a": 2333984
+  },
+  {
+    "n": "InventoryChanges::GetWornMask",
+    "t": "func",
+    "sig": "std::uint32_t()",
+    "s": 1937472,
+    "a": 2251952
+  },
+  {
+    "n": "InventoryChanges::RemoveFavorite",
+    "t": "func",
+    "sig": "void(InventoryEntryData* a_entry, ExtraDataList* a_itemList)",
+    "s": 1988848,
+    "a": 2302400
+  },
+  {
+    "n": "InventoryChanges::RemoveItem",
+    "t": "func",
+    "sig": "ObjectRefHandle(TESObjectREFR* a_ref, TESBoundObject* a_item, std::int32_t a_count, ITEM_REMOVE_REASON a_reason, ExtraDataList* a_extraDataList, TESObjectREFR* a_moveToRef, const NiPoint3& a_dropLoc, TESObjectREFR* a_dropRef)",
+    "s": 1947232,
+    "a": 2261376
+  },
+  {
+    "n": "InventoryChanges::RemoveAllItems",
+    "t": "func",
+    "sig": "void(TESObjectREFR* a_ref, TESObjectREFR* a_moveToRef, bool a_stealing, bool a_keepOwnership, bool a_arg6)",
+    "s": 1997728,
+    "a": 2311744
+  },
+  {
+    "n": "InventoryChanges::SendContainerChangedEvent",
+    "t": "func",
+    "sig": "void(ExtraDataList* a_itemExtraList, TESObjectREFR* a_fromRefr, TESForm* a_item, std::int32_t a_count)",
+    "s": 2018848,
+    "a": 2334240
+  },
+  {
+    "n": "InventoryChanges::SetFavorite",
+    "t": "func",
+    "sig": "void(InventoryEntryData* a_entry, ExtraDataList* a_itemList)",
+    "s": 1987472,
+    "a": 2301024
+  },
+  {
+    "n": "InventoryChanges::SetUniqueID",
+    "t": "func",
+    "sig": "void(ExtraDataList* a_itemList, TESForm* a_oldForm, TESForm* a_newForm)",
+    "s": 2018400,
+    "a": 2334240
+  },
+  {
+    "n": "InventoryChanges::VisitInventory",
+    "t": "func",
+    "sig": "void(IItemChangeVisitor& visitor)",
+    "s": 1986960,
+    "a": 2300512
+  },
+  {
+    "n": "InventoryChanges::VisitWornItems",
+    "t": "func",
+    "sig": "void(IItemChangeVisitor& visitor)",
+    "s": 1987024,
+    "a": 2300576
+  },
+  {
+    "n": "InventoryChanges::InitFromContainerExtra",
+    "t": "func",
+    "sig": "void()",
+    "s": 2007072,
+    "a": 2321984
+  },
+  {
+    "n": "InventoryChanges::InitLeveledItems",
+    "t": "func",
+    "sig": "void()",
+    "s": 2006416,
+    "a": 2321248
+  },
+  {
+    "n": "InventoryChanges::InitOutfitItems",
+    "t": "func",
+    "sig": "void(BGSOutfit* a_outfit, std::uint16_t a_npcLevel)",
+    "s": 1973904,
+    "a": 2287408
+  },
+  {
+    "n": "InventoryChanges::InitScripts",
+    "t": "func",
+    "sig": "void()",
+    "s": 1968304,
+    "a": 2282080
+  },
+  {
+    "n": "InventoryChanges::Ctor",
+    "t": "func",
+    "sig": "InventoryChanges*(TESObjectREFR* a_ref)",
+    "s": 1937920,
+    "a": 2252400
+  },
+  {
+    "n": "InventoryChanges::Dtor",
+    "t": "func",
+    "sig": "void()",
+    "s": 1938160,
+    "a": 2252640
+  },
+  {
+    "n": "InventoryEntryData::GetEnchantment",
+    "t": "func",
+    "sig": "EnchantmentItem*()",
+    "s": 1933072,
+    "a": 2247072
+  },
+  {
+    "n": "InventoryEntryData::GetValue",
+    "t": "func",
+    "sig": "std::int32_t()",
+    "s": 1926880,
+    "a": 2240720
+  },
+  {
+    "n": "InventoryEntryData::PoisonObject",
+    "t": "func",
+    "sig": "void(AlchemyItem* a_alchItem, std::uint32_t a_count)",
+    "s": 1932864,
+    "a": 2246864
+  },
+  {
+    "n": "InventoryEntryData::IsOwnedBy_Impl",
+    "t": "func",
+    "sig": "bool(Actor* a_testOwner, TESForm* a_itemOwner, bool a_defaultTo)",
+    "s": 1930640,
+    "a": 2244624
+  },
+  {
+    "n": "ItemCrafted::GetEventSource",
+    "t": "func",
+    "sig": "static BSTEventSource<ItemCrafted::Event>*()",
+    "s": 8849568,
+    "a": 9496736
+  },
+  {
+    "n": "TESHarvestedEvent::GetEventSource",
+    "t": "func",
+    "sig": "static BSTEventSource<TESHarvestedEvent::ItemHarvested>*()",
+    "s": 1692944,
+    "a": 2005664
+  },
+  {
+    "n": "ItemList::Update_Impl",
+    "t": "func",
+    "sig": "void(TESObjectREFR* a_owner)"
+  },
+  {
+    "n": "ItemsPickpocketed::GetEventSource",
+    "t": "func",
+    "sig": "static BSTEventSource<ItemsPickpocketed::Event>*()",
+    "s": 8790608,
+    "a": 9434960
+  },
+  {
+    "n": "LevelIncrease::GetEventSource",
+    "t": "func",
+    "sig": "static BSTEventSource<LevelIncrease::Event>*()",
+    "s": 6901792,
+    "a": 7507152
+  },
+  {
+    "n": "LocalMapCamera::SetNorthRotation",
+    "t": "func",
+    "sig": "void(float a_northRotation)",
+    "s": 2053968,
+    "a": 2369952
+  },
+  {
+    "n": "LocalMapCamera::Ctor",
+    "t": "func",
+    "sig": "LocalMapCamera*(float a_zRotation)",
+    "s": 2053008,
+    "a": 2368848
+  },
+  {
+    "n": "LocationCleared::GetEventSource",
+    "t": "func",
+    "sig": "static BSTEventSource<LocationCleared::Event>*()",
+    "s": 2384800,
+    "a": 2718416
+  },
+  {
+    "n": "LocationDiscovery::GetEventSource",
+    "t": "func",
+    "sig": "static BSTEventSource<LocationDiscovery::Event>*()",
+    "s": 7109984,
+    "a": 7717360
+  },
+  {
+    "n": "LooseFileStream::Ctor",
+    "t": "func",
+    "sig": "LooseFileStream*(const BSFixedString& a_prefix, const BSFixedString& a_dirName, const BSFixedString& a_fileName, std::uint32_t a_fileSize, bool a_readOnly, Location* a_location)",
+    "s": 12892560
+  },
+  {
+    "n": "MagicCaster::FindPickTarget",
+    "t": "func",
+    "sig": "MagicTarget*(NiPoint3& a_targetLocation, TESObjectCELL** a_targetCell, bhkPickData& a_pickData)",
+    "s": 5573984,
+    "a": 6030272
+  },
+  {
+    "n": "MagicCaster::FindTargets",
+    "t": "func",
+    "sig": "bool(float a_effectivenessMult, std::uint32_t& a_targetCount, TESBoundObject* a_source, bool a_loadCast, bool a_adjustOnlyHostileEffectiveness)",
+    "s": 5557520,
+    "a": 6013280
+  },
+  {
+    "n": "MagicCaster::FinishCast",
+    "t": "func",
+    "sig": "void()",
+    "s": 5567728,
+    "a": 6024032
+  },
+  {
+    "n": "MagicCaster::GetCurrentSpellCost",
+    "t": "func",
+    "sig": "float()",
+    "s": 5525488,
+    "a": 5980544
+  },
+  {
+    "n": "MagicCaster::InterruptCast",
+    "t": "func",
+    "sig": "void(bool a_refund)",
+    "s": 5557104,
+    "a": 6012832
+  },
+  {
+    "n": "MagicCaster::PlayReleaseSound",
+    "t": "func",
+    "sig": "void(MagicItem* a_item)",
+    "s": 5573872,
+    "a": 6026240
+  },
+  {
+    "n": "MagicCaster::SetCurrentSpell",
+    "t": "func",
+    "sig": "void(MagicItem* a_item)",
+    "s": 5566576,
+    "a": 6022832
+  },
+  {
+    "n": "MagicCaster::UpdateImpl",
+    "t": "func",
+    "sig": "void(float a_delta)",
+    "s": 5554592,
+    "a": 6010304
+  },
+  {
+    "n": "MagicFavorites::RemoveFavorite",
+    "t": "func",
+    "sig": "void(TESForm* a_form)",
+    "s": 9018528,
+    "a": 9676624
+  },
+  {
+    "n": "MagicFavorites::SetFavorite",
+    "t": "func",
+    "sig": "void(TESForm* a_form)",
+    "s": 9018432,
+    "a": 9676368
+  },
+  {
+    "n": "MagicItem::GetAVEffect",
+    "t": "func",
+    "sig": "EffectSetting*()",
+    "s": 1052144,
+    "a": 1357072
+  },
+  {
+    "n": "MagicItem::GetCostliestEffectItem",
+    "t": "func",
+    "sig": "Effect*(MagicSystem::Delivery a_delivery, bool a_positiveArea)",
+    "s": 1055936,
+    "a": 1361008
+  },
+  {
+    "n": "MagicItem::CalculateCost",
+    "t": "func",
+    "sig": "float(Actor* a_caster)",
+    "s": 1055280,
+    "a": 1360368
+  },
+  {
+    "n": "MagicItem::GetLargestArea",
+    "t": "func",
+    "sig": "std::int32_t()",
+    "s": 1056464,
+    "a": 1361472
+  },
+  {
+    "n": "MagicItem::GetLongestDuration",
+    "t": "func",
+    "sig": "std::uint32_t()",
+    "s": 1056304,
+    "a": 1361328
+  },
+  {
+    "n": "MagicItem::HasEffect",
+    "t": "func",
+    "sig": "bool(EffectArchetype a_archetype)",
+    "s": 1054608,
+    "a": 1359680
+  },
+  {
+    "n": "MagicItem::IsPermanent",
+    "t": "func",
+    "sig": "bool()",
+    "s": 1050608,
+    "a": 1355136
+  },
+  {
+    "n": "MagicItem::Traverse",
+    "t": "func",
+    "sig": "void(MagicItemTraversalFunctor& a_visitor)",
+    "s": 1056816,
+    "a": 1361792
+  },
+  {
+    "n": "MagicSystem::GetCannotCastString",
+    "t": "func",
+    "sig": "const char*(MagicSystem::CannotCastReason a_reason)",
+    "s": 1064416,
+    "a": 1368656
+  },
+  {
+    "n": "MagicSystem::GetMagicCasterTargetUpdateInterval",
+    "t": "func",
+    "sig": "float()",
+    "s": 1064400,
+    "a": 1368640
+  },
+  {
+    "n": "MagicSystem::GetMagicFailureSound",
+    "t": "func",
+    "sig": "BGSSoundDescriptorForm*(MagicSystem::SpellType a_type)",
+    "s": 1063696,
+    "a": 1368064
+  },
+  {
+    "n": "MagicSystem::GetMagicItemDescription",
+    "t": "func",
+    "sig": "void(BSString& a_out, MagicItem* a_magicItem, const char* a_beginTagFormat, const char* a_endTagFormat)",
+    "s": 1064848,
+    "a": 1369072
+  },
+  {
+    "n": "MagicTarget::AddTargetData::CheckAddEffect",
+    "t": "func",
+    "sig": "bool(ActiveEffectFactory::CheckTargetArgs& a_args, float a_resistance)",
+    "s": 5584320,
+    "a": 6041792
+  },
+  {
+    "n": "MagicTarget::DispelEffect",
+    "t": "func",
+    "sig": "bool(MagicItem* a_spell, BSPointerHandle<Actor>& a_caster, ActiveEffect* a_effect)",
+    "s": 5581024,
+    "a": 6038400
+  },
+  {
+    "n": "MagicTarget::HasMagicEffect",
+    "t": "func",
+    "sig": "bool(EffectSetting* a_effect)",
+    "s": 5583056,
+    "a": 6040448
+  },
+  {
+    "n": "MagicTarget::HasMagicEffectWithKeyword",
+    "t": "func",
+    "sig": "bool(BGSKeyword* a_keyword, MagicItem** a_spellOut)",
+    "s": 5583200,
+    "a": 6040592
+  },
+  {
+    "n": "MagicTarget::VisitEffects",
+    "t": "func",
+    "sig": "void(ForEachActiveEffectVisitor& visitor)",
+    "s": 5588224,
+    "a": 6046592
+  },
+  {
+    "n": "GetAssociatedResource",
+    "t": "func",
+    "sig": "ActorValue(MagicItem* a_item, MagicSystem::CastingSource a_castingSource)",
+    "s": 5597056,
+    "a": 6055536
+  },
+  {
+    "n": "GetAssociatedResourceReason",
+    "t": "func",
+    "sig": "MagicSystem::CannotCastReason(MagicItem* a_item, MagicSystem::CastingSource a_castingSource)",
+    "s": 5597200,
+    "a": 6055680
+  },
+  {
+    "n": "UsesResourceOnRelease",
+    "t": "func",
+    "sig": "bool(MagicItem* a_item, MagicSystem::CastingSource a_castingSource)",
+    "s": 5597584,
+    "a": 6056144
+  },
+  {
+    "n": "UsesResourceWhileCasting",
+    "t": "func",
+    "sig": "bool(MagicItem* a_item, MagicSystem::CastingSource a_castingSource)",
+    "s": 5597440,
+    "a": 6056016
+  },
+  {
+    "n": "UsesResourceWhileCharging",
+    "t": "func",
+    "sig": "bool(MagicItem* a_item, MagicSystem::CastingSource a_castingSource)",
+    "s": 5597264,
+    "a": 6055872
+  },
+  {
+    "n": "Main::IsRoomVisible",
+    "t": "func",
+    "sig": "bool(NiNode* a_room)",
+    "s": 5989488,
+    "a": 6594336
+  },
+  {
+    "n": "Main::WorldRootCamera",
+    "t": "func",
+    "sig": "static NiCamera*()",
+    "s": 5988448,
+    "a": 6593168
+  },
+  {
+    "n": "Main::SetActive",
+    "t": "func",
+    "sig": "void(bool a_active)",
+    "s": 5988080,
+    "a": 6592800
+  },
+  {
+    "n": "LookupReferenceByHandle_ActorImpl",
+    "t": "func",
+    "sig": "bool(const RefHandle& a_handle, NiPointer<Actor>& a_refrOut)"
+  },
+  {
+    "n": "LookupReferenceByHandle_RefrImpl",
+    "t": "func",
+    "sig": "bool(const RefHandle& a_handle, NiPointer<TESObjectREFR>& a_refrOut)"
+  },
+  {
+    "n": "CreateMessage",
+    "t": "func",
+    "sig": "void(const char* a_message, IMessageBoxCallback* a_callback, std::uint32_t a_arg3, std::uint32_t a_arg4, std::uint32_t a_arg5, const char* a_buttonText, const char* a_secondaryButtonText)",
+    "s": 9089408,
+    "a": 9745024
+  },
+  {
+    "n": "CreateRefHandle",
+    "t": "func",
+    "sig": "void(RefHandle& a_handleOut, TESObjectREFR* a_refTo)",
+    "a": 1544272
+  },
+  {
+    "n": "DebugNotification",
+    "t": "func",
+    "sig": "void(const char* a_notification, const char* a_soundToPlay, bool a_cancelIfAlreadyQueued)",
+    "a": 9938400
+  },
+  {
+    "n": "GetArmorFinalRating",
+    "t": "func",
+    "sig": "float(RE::InventoryEntryData* a_armorEntryData, float a_armorPerks, float a_skillMultiplier)",
+    "s": 1930032,
+    "a": 2243824
+  },
+  {
+    "n": "PlaySound",
+    "t": "func",
+    "sig": "void(const char* a_editorID)",
+    "a": 9940048
+  },
+  {
+    "n": "ShakeCamera",
+    "t": "func",
+    "sig": "void(float a_strength, const NiPoint3& a_position, float a_duration)",
+    "s": 5198880,
+    "a": 5572304
+  },
+  {
+    "n": "NativeFunctionBase::Call",
+    "t": "func",
+    "sig": "CallResult(const BSTSmartPointer<Stack>& a_stack, ErrorLogger* a_logger, Internal::VirtualMachine* a_vm, bool a_arg4)"
+  },
+  {
+    "n": "NiAVObject::Clone",
+    "t": "func",
+    "sig": "NiAVObject*()",
+    "s": 12920656,
+    "a": 13729424
+  },
+  {
+    "n": "NiAVObject::GetCollisionObject",
+    "t": "func",
+    "sig": "bhkCollisionObject*()",
+    "s": 3825984,
+    "a": 4187872
+  },
+  {
+    "n": "NiAVObject::RemoveDecals",
+    "t": "func",
+    "sig": "void()",
+    "s": 1886144,
+    "a": 2199440
+  },
+  {
+    "n": "NiAVObject::SetCollisionLayer",
+    "t": "func",
+    "sig": "void(COL_LAYER a_collisionLayer)",
+    "s": 14345168,
+    "a": 15259376
+  },
+  {
+    "n": "NiAVObject::SetCollisionLayerAndGroup",
+    "t": "func",
+    "sig": "void(COL_LAYER a_collisionLayer, std::uint32_t a_group)",
+    "s": 14345200,
+    "a": 15259408
+  },
+  {
+    "n": "NiAVObject::SetMotionType",
+    "t": "func",
+    "sig": "bool(hkpMotion::MotionType a_motionType, bool a_recurse, bool a_force, bool a_allowActivate)",
+    "s": 14320096,
+    "a": 15233648
+  },
+  {
+    "n": "NiAVObject::Update",
+    "t": "func",
+    "sig": "void(NiUpdateData& a_data)",
+    "s": 12938064,
+    "a": 13746032
+  },
+  {
+    "n": "NiAVObject::UpdateRigidConstraints",
+    "t": "func",
+    "sig": "void(bool a_enable, std::uint8_t a_arg2, std::uint32_t a_arg3)",
+    "s": 14372128,
+    "a": 15288272
+  },
+  {
+    "n": "NiCamera::BoundInFrustum",
+    "t": "func",
+    "sig": "static bool(const NiBound& a_bound, RE::NiCamera* a_camera)",
+    "s": 1909952,
+    "a": 2223488
+  },
+  {
+    "n": "NiCamera::WindowPointToRay",
+    "t": "func",
+    "sig": "bool(std::int32_t a_x, std::int32_t a_y, NiPoint3& a_origin, NiPoint3& a_dir, float a_windowWidth, float a_windowHeight)",
+    "s": 12998496,
+    "a": 13809232
+  },
+  {
+    "n": "NiControllerSequence::Activate",
+    "t": "func",
+    "sig": "bool(std::uint8_t a_interpIndex, bool a_maxOffset, float a_seqWeight, float a_easeInTime, NiControllerSequence* a_partnerSequence, bool a_transition)",
+    "s": 13401264,
+    "a": 14233264
+  },
+  {
+    "n": "NiControllerSequence::SetPhase",
+    "t": "func",
+    "sig": "void(float a_phase, bool a_arg2)",
+    "s": 13394064,
+    "a": 14225136
+  },
+  {
+    "n": "NiControllerSequence::ResolveTransformInterpolators",
+    "t": "func",
+    "sig": "bool(NiAVObject* a_root, NiDefaultAVObjectPalette* a_objectPalette, std::uint32_t a_formal)",
+    "s": 13411040,
+    "a": 14243488
+  },
+  {
+    "n": "NiNode::Ctor",
+    "t": "func",
+    "sig": "NiNode*(std::uint16_t a_arrBuffLen)",
+    "s": 12941920,
+    "a": 13750080
+  },
+  {
+    "n": "NiObject::ProcessClone",
+    "t": "func",
+    "sig": "void(NiCloningProcess& a_cloning)",
+    "s": 12921088,
+    "a": 13729856
+  },
+  {
+    "n": "NiObject::CreateDeepCopy",
+    "t": "func",
+    "sig": "void(NiPointer<NiObject>& a_object)",
+    "s": 12921248,
+    "a": 13729920
+  },
+  {
+    "n": "NiObjectNET::RemoveController",
+    "t": "func",
+    "sig": "void(NiTimeController* a_controller)",
+    "s": 12980144,
+    "a": 13789600
+  },
+  {
+    "n": "NiSkinInstance::Create",
+    "t": "func",
+    "sig": "static NiSkinInstance*()"
+  },
+  {
+    "n": "NiTimeController::LoadBinary",
+    "t": "func",
+    "sig": "void(NiStream& a_stream)",
+    "s": 13028688,
+    "a": 13841376
+  },
+  {
+    "n": "NiTimeController::LinkObject",
+    "t": "func",
+    "sig": "void(NiStream& a_stream)",
+    "s": 13029024,
+    "a": 13841712
+  },
+  {
+    "n": "NiTimeController::RegisterStreamables",
+    "t": "func",
+    "sig": "bool(NiStream& a_stream)",
+    "s": 13029136,
+    "a": 13841824
+  },
+  {
+    "n": "NiTimeController::SaveBinary",
+    "t": "func",
+    "sig": "void(NiStream& a_stream)",
+    "s": 13029216,
+    "a": 13841904
+  },
+  {
+    "n": "NiTimeController::IsEqual",
+    "t": "func",
+    "sig": "bool(NiObject* a_object)",
+    "s": 13029568,
+    "a": 13842256
+  },
+  {
+    "n": "NiTimeController::ProcessClone",
+    "t": "func",
+    "sig": "void(NiCloningProcess& a_cloning)",
+    "s": 13031440,
+    "a": 13844144
+  },
+  {
+    "n": "NiTimeController::Start",
+    "t": "func",
+    "sig": "void(float a_time)",
+    "s": 13029936,
+    "a": 13842640
+  },
+  {
+    "n": "NiTimeController::Stop",
+    "t": "func",
+    "sig": "void()",
+    "s": 13029968,
+    "a": 13842672
+  },
+  {
+    "n": "NiTimeController::SetTarget",
+    "t": "func",
+    "sig": "void(NiObjectNET* a_target)",
+    "s": 13030016,
+    "a": 13842720
+  },
+  {
+    "n": "NiTimeController::ComputeScaledTime",
+    "t": "func",
+    "sig": "float(float a_time)",
+    "s": 13030880,
+    "a": 13843584
+  },
+  {
+    "n": "NiTimeController::StartAnimations",
+    "t": "func",
+    "sig": "static void(NiObjectNET* a_target)",
+    "s": 13030384,
+    "a": 13843088
+  },
+  {
+    "n": "NiTimeController::ctor",
+    "t": "func",
+    "sig": "NiTimeController*()",
+    "s": 13029712,
+    "a": 13842400
+  },
+  {
+    "n": "NiTimeController::dtor",
+    "t": "func",
+    "sig": "void()",
+    "s": 13029840,
+    "a": 13842544
+  },
+  {
+    "n": "Object::GetHandle",
+    "t": "func",
+    "sig": "VMHandle()",
+    "s": 19085088,
+    "a": 21111360
+  },
+  {
+    "n": "Object::IncRef",
+    "t": "func",
+    "sig": "void()",
+    "s": 19088224,
+    "a": 21114528
+  },
+  {
+    "n": "Object::DecRef",
+    "t": "func",
+    "sig": "std::uint32_t()",
+    "s": 19088400,
+    "a": 21114704
+  },
+  {
+    "n": "Object::Dtor",
+    "t": "func",
+    "sig": "void()",
+    "s": 19084912,
+    "a": 21111184
+  },
+  {
+    "n": "ObjectiveState::GetEventSource",
+    "t": "func",
+    "sig": "static BSTEventSource<ObjectiveState::Event>*()",
+    "s": 3395008,
+    "a": 3756672
+  },
+  {
+    "n": "PlayerCamera::ForceFirstPerson",
+    "t": "func",
+    "sig": "void()",
+    "s": 8696320,
+    "a": 9318656
+  },
+  {
+    "n": "PlayerCamera::ForceThirdPerson",
+    "t": "func",
+    "sig": "void()",
+    "s": 8696656,
+    "a": 9319008
+  },
+  {
+    "n": "PlayerCamera::PushCameraState",
+    "t": "func",
+    "sig": "void(CameraState a_state)",
+    "s": 8710768,
+    "a": 9333712
+  },
+  {
+    "n": "PlayerCamera::ToggleFreeCameraMode",
+    "t": "func",
+    "sig": "void(bool a_freezeTime)",
+    "s": 8697632,
+    "a": 9320000
+  },
+  {
+    "n": "PlayerCamera::Update",
+    "t": "func",
+    "sig": "void()",
+    "s": 8694672,
+    "a": 9316768
+  },
+  {
+    "n": "PlayerCamera::UpdateThirdPerson",
+    "t": "func",
+    "sig": "void(bool a_weaponDrawn)",
+    "s": 8705584,
+    "a": 9328720
+  },
+  {
+    "n": "PlayerCharacter::PlayerSkills::AdvanceLevel",
+    "t": "func",
+    "sig": "void(bool a_addThreshold)",
+    "s": 7235392,
+    "a": 7845072
+  },
+  {
+    "n": "PlayerCharacter::ActivatePickRef",
+    "t": "func",
+    "sig": "void()",
+    "s": 6987664,
+    "a": 7596416
+  },
+  {
+    "n": "PlayerCharacter::AddPlayerAddItemEvent",
+    "t": "func",
+    "sig": "void(TESObject* a_object, TESForm* a_owner, TESObjectREFR* a_container, AQUIRE_TYPE a_type)",
+    "s": 6946400,
+    "a": 7554976
+  },
+  {
+    "n": "PlayerCharacter::AttemptPickpocket",
+    "t": "func",
+    "sig": "bool(TESObjectREFR* a_containerRef, InventoryEntryData* a_entry, std::int32_t a_number, bool a_fromContainer)",
+    "s": 7021872,
+    "a": 7630656
+  },
+  {
+    "n": "PlayerCharacter::CheckCast",
+    "t": "func",
+    "sig": "bool(MagicItem* a_spell, Effect* a_effect, MagicSystem::CannotCastReason& a_reason)",
+    "s": 6955104,
+    "a": 7563600
+  },
+  {
+    "n": "PlayerCharacter::DestroyMouseSprings",
+    "t": "func",
+    "sig": "void()",
+    "s": 6998768,
+    "a": 7607472
+  },
+  {
+    "n": "PlayerCharacter::GetArmorValue",
+    "t": "func",
+    "sig": "float(InventoryEntryData* a_form)",
+    "s": 6892752,
+    "a": 7498464
+  },
+  {
+    "n": "PlayerCharacter::GetDamage",
+    "t": "func",
+    "sig": "float(InventoryEntryData* a_form)",
+    "s": 6893648,
+    "a": 7499344
+  },
+  {
+    "n": "PlayerCharacter::GetItemCount",
+    "t": "func",
+    "sig": "std::int32_t(TESBoundObject* a_object)",
+    "s": 2679648,
+    "a": 3023040
+  },
+  {
+    "n": "PlayerCharacter::GetNumTints",
+    "t": "func",
+    "sig": "std::uint32_t(std::uint32_t a_tintType)",
+    "s": 7033936,
+    "a": 7644176
+  },
+  {
+    "n": "PlayerCharacter::GetTintMask",
+    "t": "func",
+    "sig": "TintMask*(std::uint32_t a_tintType, std::uint32_t a_index)",
+    "s": 7033504,
+    "a": 7643744
+  },
+  {
+    "n": "PlayerCharacter::PlayMagicFailureSound",
+    "t": "func",
+    "sig": "void(MagicSystem::SpellType a_spellType)",
+    "s": 7000560,
+    "a": 7609136
+  },
+  {
+    "n": "PlayerCharacter::SetAIDriven",
+    "t": "func",
+    "sig": "void(bool a_enable)",
+    "s": 7004944,
+    "a": 7613840
+  },
+  {
+    "n": "PlayerCharacter::SetEscaping",
+    "t": "func",
+    "sig": "void(bool a_flag, bool a_escaped)",
+    "s": 7024912,
+    "a": 7633984
+  },
+  {
+    "n": "PlayerCharacter::StartGrabObject",
+    "t": "func",
+    "sig": "void()",
+    "s": 6988384,
+    "a": 7597168
+  },
+  {
+    "n": "PlayerCharacter::UpdateCrosshairs",
+    "t": "func",
+    "sig": "void()",
+    "s": 7013744,
+    "a": 7622192
+  },
+  {
+    "n": "PlayerCharacter::CenterOnCell_Impl",
+    "t": "func",
+    "sig": "bool(const char* a_cellName, RE::TESObjectCELL* a_cell)",
+    "s": 6931104,
+    "a": 7537232
+  },
+  {
+    "n": "PlayerCharacter::AddSkillExperience",
+    "t": "func",
+    "sig": "void(ActorValue a_skill, float a_experience)",
+    "s": 6956352,
+    "a": 7564832
+  },
+  {
+    "n": "PlayerControls::Ctor",
+    "t": "func",
+    "sig": "PlayerControls*()",
+    "s": 7358832,
+    "a": 7972032
+  },
+  {
+    "n": "ProcessLists::AreHostileActorsNear",
+    "t": "func",
+    "sig": "bool(BSScrapArray<ActorHandle>* a_arrayOut)",
+    "s": 7201184,
+    "a": 7810576
+  },
+  {
+    "n": "ProcessLists::ClearCachedFactionFightReactions",
+    "t": "func",
+    "sig": "void()",
+    "s": 7203920,
+    "a": 7813360
+  },
+  {
+    "n": "ProcessLists::GetSystemTimeClock",
+    "t": "func",
+    "sig": "float()",
+    "s": 7181184,
+    "a": 7790992
+  },
+  {
+    "n": "ProcessLists::RequestHighestDetectionLevelAgainstActor",
+    "t": "func",
+    "sig": "std::int16_t(Actor* a_actor, std::uint32_t& a_LOSCount)",
+    "s": 7203232,
+    "a": 7812656
+  },
+  {
+    "n": "ProcessLists::StopCombatAndAlarmOnActor",
+    "t": "func",
+    "sig": "void(Actor* a_actor, bool a_notAlarm)",
+    "s": 7181456,
+    "a": 7791280
+  },
+  {
+    "n": "Projectile::Launch",
+    "t": "func",
+    "sig": "static ProjectileHandle*(ProjectileHandle* a_result, LaunchData& a_data)",
+    "s": 7647600,
+    "a": 8275648
+  },
+  {
+    "n": "QuestStatus::GetEventSource",
+    "t": "func",
+    "sig": "static BSTEventSource<QuestStatus::Event>*()",
+    "s": 3673056,
+    "a": 4034048
+  },
+  {
+    "n": "RaceSexMenu::ChangeName",
+    "t": "func",
+    "sig": "void(const char* a_name)",
+    "s": 9151888,
+    "a": 9807456
+  },
+  {
+    "n": "ReferenceEffectController::Start",
+    "t": "func",
+    "sig": "void(ReferenceEffect** a_effectOut)",
+    "s": 5618816,
+    "a": 6080048
+  },
+  {
+    "n": "Renderer::CreateRenderTexture",
+    "t": "func",
+    "sig": "NiTexture::RendererData*(std::uint32_t a_width, std::uint32_t a_height)",
+    "s": 14080960,
+    "a": 14975376
+  },
+  {
+    "n": "Renderer::SaveRenderTargetToFile",
+    "t": "func",
+    "sig": "void(RENDER_TARGET a_renderTarget, const char* a_filePath, BSGraphics::TextureFileFormat a_textureFileFormat)",
+    "s": 14083968,
+    "a": 14978768
+  },
+  {
+    "n": "Renderer::Init",
+    "t": "func",
+    "sig": "void(RendererInitOSData* a_data, ApplicationWindowProperties* a_windowProps, REX::W32::HWND a_window)",
+    "s": 14061008,
+    "a": 14951392
+  },
+  {
+    "n": "Renderer::Begin",
+    "t": "func",
+    "sig": "void(std::uint32_t a_windowID)",
+    "s": 14065856,
+    "a": 14960016
+  },
+  {
+    "n": "Renderer::CreateSwapChain",
+    "t": "func",
+    "sig": "void(REX::W32::HWND* a_window, bool a_setCurrent)",
+    "s": 14065312,
+    "a": 14959456
+  },
+  {
+    "n": "Renderer::End",
+    "t": "func",
+    "sig": "void()",
+    "s": 14066352,
+    "a": 14960496
+  },
+  {
+    "n": "Renderer::KillWindow",
+    "t": "func",
+    "sig": "void(std::uint32_t a_windowID)",
+    "s": 14063280,
+    "a": 14955680
+  },
+  {
+    "n": "Renderer::Lock",
+    "t": "func",
+    "sig": "void()",
+    "s": 14065792,
+    "a": 14959952
+  },
+  {
+    "n": "Renderer::Unlock",
+    "t": "func",
+    "sig": "void()",
+    "s": 14065824,
+    "a": 14959984
+  },
+  {
+    "n": "Renderer::ResizeWindow",
+    "t": "func",
+    "sig": "void(std::uint32_t a_windowID, std::uint32_t a_width, std::uint32_t a_height, bool a_fullscreen, bool a_borderless)",
+    "s": 14064496,
+    "a": 14958672
+  },
+  {
+    "n": "Renderer::RequestWindowResize",
+    "t": "func",
+    "sig": "void(std::uint32_t a_width, std::uint32_t a_height)",
+    "s": 14063136,
+    "a": 14955536
+  },
+  {
+    "n": "Renderer::SetWindowPosition",
+    "t": "func",
+    "sig": "void(std::uint32_t a_windowID, std::int32_t a_x, std::int32_t a_y)",
+    "s": 14062992,
+    "a": 14955392
+  },
+  {
+    "n": "Renderer::SetWindowActiveState",
+    "t": "func",
+    "sig": "void(bool a_show)",
+    "s": 14063184,
+    "a": 14955584
+  },
+  {
+    "n": "Renderer::WindowSizeChanged",
+    "t": "func",
+    "sig": "void(std::uint32_t a_windowID)",
+    "s": 14063776,
+    "a": 14957504
+  },
+  {
+    "n": "Renderer::UpdateViewPort",
+    "t": "func",
+    "sig": "void(std::uint32_t a_unk1, std::uint32_t a_unk2, bool a_unk3)",
+    "s": 14064896,
+    "a": 14959040
+  },
+  {
+    "n": "Renderer::Shutdown",
+    "t": "func",
+    "sig": "void()",
+    "s": 14061888,
+    "a": 14954000
+  },
+  {
+    "n": "Rumble::DisableRumble",
+    "t": "func",
+    "sig": "static void()",
+    "s": 12651312,
+    "a": 13452896
+  },
+  {
+    "n": "ScrapHeap::Allocate",
+    "t": "func",
+    "sig": "void*(std::size_t a_size, std::size_t a_alignment)",
+    "s": 12596384,
+    "a": 13391056
+  },
+  {
+    "n": "ScrapHeap::Deallocate",
+    "t": "func",
+    "sig": "void(void* a_mem)",
+    "s": 12597952,
+    "a": 13392592
+  },
+  {
+    "n": "Script::GetProcessScripts",
+    "t": "func",
+    "sig": "static bool()",
+    "s": 3054688,
+    "a": 3407168
+  },
+  {
+    "n": "Script::SetProcessScripts",
+    "t": "func",
+    "sig": "static void(bool a_ProcessScripts)",
+    "s": 3054672,
+    "a": 3407152
+  },
+  {
+    "n": "Script::CompileAndRun_Impl",
+    "t": "func",
+    "sig": "void(ScriptCompiler* a_compiler, COMPILER_NAME a_name, TESObjectREFR* a_targetRef)"
+  },
+  {
+    "n": "ScriptEventSourceHolder::GetSingleton",
+    "t": "func",
+    "sig": "static ScriptEventSourceHolder*()",
+    "s": 1599376,
+    "a": 1921584
+  },
+  {
+    "n": "ScriptEventSourceHolder::SendOpenCloseEvent",
+    "t": "func",
+    "sig": "void(const NiPointer<TESObjectREFR>& a_ref, const NiPointer<TESObjectREFR>& a_activeRef, bool a_isOpened)",
+    "s": 1613760,
+    "a": 1921728
+  },
+  {
+    "n": "SendInventoryUpdateMessage",
+    "t": "func",
+    "sig": "void(TESObjectREFR* a_inventoryRef, const TESBoundObject* a_updateObj)",
+    "s": 9262864,
+    "a": 9923200
+  },
+  {
+    "n": "ShoutAttack::GetEventSource",
+    "t": "func",
+    "sig": "static BSTEventSource<ShoutAttack::Event>*()",
+    "s": 7110944,
+    "a": 7718320
+  },
+  {
+    "n": "SkillIncrease::GetEventSource",
+    "t": "func",
+    "sig": "static BSTEventSource<SkillIncrease::Event>*()",
+    "s": 6902032,
+    "a": 7507392
+  },
+  {
+    "n": "Sky::GetSingleton",
+    "t": "func",
+    "sig": "static Sky*()",
+    "s": 1537936,
+    "a": 1844800
+  },
+  {
+    "n": "Sky::ForceWeather",
+    "t": "func",
+    "sig": "void(TESWeather* a_weather, bool a_override)",
+    "s": 3885728,
+    "a": 4252096
+  },
+  {
+    "n": "Sky::IsDaytime",
+    "t": "func",
+    "sig": "bool()",
+    "s": 3870336,
+    "a": 4235824
+  },
+  {
+    "n": "Sky::ResetWeather",
+    "t": "func",
+    "sig": "void()",
+    "s": 3885600,
+    "a": 4251968
+  },
+  {
+    "n": "Sky::SetWeather",
+    "t": "func",
+    "sig": "void(TESWeather* a_weather, bool a_override, bool a_accelerate)",
+    "s": 3885472,
+    "a": 4251840
+  },
+  {
+    "n": "SkyrimVM::QueuePostRenderCall",
+    "t": "func",
+    "sig": "bool(const BSTSmartPointer<SkyrimScript::DelayFunctor>& a_functor)",
+    "s": 9589440,
+    "a": 10237120
+  },
+  {
+    "n": "SkyrimVM::RelayEvent",
+    "t": "func",
+    "sig": "void(VMHandle a_handle, BSFixedString* a_event, BSScript::IFunctionArguments* a_args, SkyrimVM::ISendEventFilter* a_optionalFilter)",
+    "s": 9621808,
+    "a": 10270992
+  },
+  {
+    "n": "SoulsTrapped::GetEventSource",
+    "t": "func",
+    "sig": "static BSTEventSource<SoulsTrapped::Event>*()",
+    "s": 6515776,
+    "a": 7113456
+  },
+  {
+    "n": "SourceActionMap::DoAction",
+    "t": "func",
+    "sig": "bool(Actor* a_actor, DEFAULT_OBJECT a_action)",
+    "s": 5525152,
+    "a": 5980336
+  },
+  {
+    "n": "SpellsLearned::GetEventSource",
+    "t": "func",
+    "sig": "static BSTEventSource<SpellsLearned::Event>*()",
+    "s": 6516016,
+    "a": 7113696
+  },
+  {
+    "n": "Stack::GetStackFrameVariable",
+    "t": "func",
+    "sig": "Variable&(const StackFrame* a_frame, std::uint32_t a_index, std::uint32_t a_pageHint)",
+    "s": 19155408,
+    "a": 21178448
+  },
+  {
+    "n": "Stack::Dtor",
+    "t": "func",
+    "sig": "void()",
+    "s": 19154112,
+    "a": 21177152
+  },
+  {
+    "n": "TaskQueueInterface::ShouldUseTaskQueue",
+    "t": "func",
+    "sig": "static bool()",
+    "s": 6551568,
+    "a": 7151328
+  },
+  {
+    "n": "TaskQueueInterface::QueueNodeAttach",
+    "t": "func",
+    "sig": "void(NiAVObject* a_obj, NiNode* a_root, bool a_arg3, bool a_arg4)",
+    "s": 6039152,
+    "a": 6639760
+  },
+  {
+    "n": "TaskQueueInterface::QueueNodeDetach",
+    "t": "func",
+    "sig": "void(NiAVObject* a_obj)",
+    "s": 6039360,
+    "a": 6639840
+  },
+  {
+    "n": "TaskQueueInterface::QueueUpdateDestructibleObject",
+    "t": "func",
+    "sig": "void(TESObjectREFR* a_refr, float a_damage, bool a_arg3, TESObjectREFR* a_cause)",
+    "s": 6041616,
+    "a": 6641056
+  },
+  {
+    "n": "TaskQueueInterface::QueueAddRipple",
+    "t": "func",
+    "sig": "void(float a_scale, const NiPoint3& a_pos)",
+    "s": 6050336,
+    "a": 6644512
+  },
+  {
+    "n": "TaskQueueInterface::QueueForceWeather",
+    "t": "func",
+    "sig": "void(TESWeather* a_weather, bool a_forceOverride)",
+    "s": 6052848,
+    "a": 6645536
+  },
+  {
+    "n": "TaskQueueInterface::QueueUpdateNiObject",
+    "t": "func",
+    "sig": "void(NiAVObject* a_obj)",
+    "s": 6040272,
+    "a": 6640240
+  },
+  {
+    "n": "TaskQueueInterface::QueueActorDisarm",
+    "t": "func",
+    "sig": "void(ActorHandle& a_target, ActorHandle& a_caster)",
+    "s": 6056368,
+    "a": 6646752
+  },
+  {
+    "n": "TaskQueueInterface::QueueRemoveSpell",
+    "t": "func",
+    "sig": "void(ActorHandle& a_actor, SpellItem* a_spellItem)",
+    "s": 6052032,
+    "a": 6645216
+  },
+  {
+    "n": "TES::GetCell",
+    "t": "func",
+    "sig": "TESObjectCELL*(const NiPoint3& a_position)",
+    "s": 1396880,
+    "a": 1697872
+  },
+  {
+    "n": "TES::GetLandMaterialType",
+    "t": "func",
+    "sig": "MATERIAL_ID(const NiPoint3& a_position)",
+    "s": 1404112,
+    "a": 1705408
+  },
+  {
+    "n": "TES::GetLandHeight",
+    "t": "func",
+    "sig": "bool(const NiPoint3& a_positionIn, float& a_heightOut)",
+    "s": 1402608,
+    "a": 1703872
+  },
+  {
+    "n": "TES::GetLandTexture",
+    "t": "func",
+    "sig": "TESLandTexture*(const NiPoint3& a_position)",
+    "s": 1403744,
+    "a": 1705040
+  },
+  {
+    "n": "TES::GetWaterHeight",
+    "t": "func",
+    "sig": "float(const NiPoint3& a_pos, TESObjectCELL* a_cell)",
+    "s": 1405792,
+    "a": 1707296
+  },
+  {
+    "n": "TES::Pick",
+    "t": "func",
+    "sig": "NiAVObject*(bhkPickData& a_pickData)",
+    "s": 1409216,
+    "a": 1710992
+  },
+  {
+    "n": "TES::PurgeBufferedCells",
+    "t": "func",
+    "sig": "void()",
+    "s": 1390032,
+    "a": 1690000
+  },
+  {
+    "n": "TESCamera::SetState",
+    "t": "func",
+    "sig": "void(TESCameraState* a_state)",
+    "s": 5201024,
+    "a": 5575104
+  },
+  {
+    "n": "TESConditionItem::IsTrue",
+    "t": "func",
+    "sig": "bool(ConditionCheckParams& a_solution)",
+    "s": 4478144,
+    "a": 4851168
+  },
+  {
+    "n": "TESCondition::IsTrue",
+    "t": "func",
+    "sig": "bool(TESObjectREFR* a_actionRef, TESObjectREFR* a_targetRef)",
+    "s": 4474784,
+    "a": 4847856
+  },
+  {
+    "n": "TESDataHandler::AddFormToDataHandler",
+    "t": "func",
+    "sig": "bool(TESForm* a_form)",
+    "s": 1471488,
+    "a": 1774784
+  },
+  {
+    "n": "TESDataHandler::LoadScripts",
+    "t": "func",
+    "sig": "std::uint32_t()",
+    "s": 1512400,
+    "a": 1821632
+  },
+  {
+    "n": "TESDataHandler::GetExtCellDataFromFileByEditorID",
+    "t": "func",
+    "sig": "TESWorldSpace*(const char* a_cellID, std::int32_t& a_outX, std::int32_t& a_outY)",
+    "s": 1488960,
+    "a": 1792784
+  },
+  {
+    "n": "TESDataHandler::GetNextID",
+    "t": "func",
+    "sig": "FormID()",
+    "s": 1496272,
+    "a": 1803392
+  },
+  {
+    "n": "TESDataHandler::CreateReferenceAtLocation",
+    "t": "func",
+    "sig": "ObjectRefHandle(TESBoundObject* a_base, const NiPoint3& a_location, const NiPoint3& a_rotation, TESObjectCELL* a_targetCell, TESWorldSpace* a_selfWorldSpace, TESObjectREFR* a_alreadyCreatedRef, BGSPrimitive* a_primitive, const ObjectRefHandle& a_linkedRoomRefHandle, bool a_forcePersist, bool a_arg11)",
+    "s": 1491472,
+    "a": 1797136
+  },
+  {
+    "n": "TESDescription::GetDescription",
+    "t": "func",
+    "sig": "void(BSString& a_out, TESForm* a_parent, std::uint32_t a_fieldType)",
+    "s": 1639552,
+    "a": 1948864
+  },
+  {
+    "n": "TESFaction::SetFactionFightReaction",
+    "t": "func",
+    "sig": "void(TESFaction* a_faction, FIGHT_REACTION a_fightReaction)",
+    "s": 3496256,
+    "a": 3858128
+  },
+  {
+    "n": "TESFile::CloseTES",
+    "t": "func",
+    "sig": "bool(bool a_force)",
+    "s": 1551680,
+    "a": 1856896
+  },
+  {
+    "n": "TESFile::Duplicate",
+    "t": "func",
+    "sig": "TESFile*(std::uint32_t a_cacheSize)",
+    "s": 1565872,
+    "a": 1872144
+  },
+  {
+    "n": "TESFile::GetCurrentSubRecordType",
+    "t": "func",
+    "sig": "std::uint32_t()",
+    "s": 1562896,
+    "a": 1869120
+  },
+  {
+    "n": "TESFile::GetFormType",
+    "t": "func",
+    "sig": "FormType()",
+    "s": 1561792,
+    "a": 1868032
+  },
+  {
+    "n": "TESFile::OpenTES",
+    "t": "func",
+    "sig": "bool(NiFile::OpenMode a_accessMode, bool a_lock)",
+    "s": 1550080,
+    "a": 1854880
+  },
+  {
+    "n": "TESFile::ReadData",
+    "t": "func",
+    "sig": "bool(void* a_buf, std::uint32_t a_size)",
+    "s": 1563152,
+    "a": 1869376
+  },
+  {
+    "n": "TESFile::Seek",
+    "t": "func",
+    "sig": "bool(std::uint32_t a_offset)",
+    "s": 1561936,
+    "a": 1868176
+  },
+  {
+    "n": "TESFile::SeekNextForm",
+    "t": "func",
+    "sig": "bool(bool a_skipIgnored)",
+    "s": 1560848,
+    "a": 1867056
+  },
+  {
+    "n": "TESFile::SeekNextSubrecord",
+    "t": "func",
+    "sig": "bool()",
+    "s": 1562976,
+    "a": 1869200
+  },
+  {
+    "n": "TESForm::SetFile",
+    "t": "func",
+    "sig": "void(TESFile* a_file)",
+    "s": 1656384,
+    "a": 1967216
+  },
+  {
+    "n": "TESForm::SetPlayerKnows",
+    "t": "func",
+    "sig": "void(bool a_known)",
+    "s": 1657888,
+    "a": 1968784
+  },
+  {
+    "n": "AddExplosionImpulse",
+    "t": "func",
+    "sig": "void(NiAVObject* a_obj3D, hkVector4& a_pos, float a_force, const HitData* a_hitData)",
+    "s": 3821424,
+    "a": 4183408
+  },
+  {
+    "n": "FindCollidableRef",
+    "t": "func",
+    "sig": "TESObjectREFR*(const hkpCollidable& a_linkedCollidable)"
+  },
+  {
+    "n": "FindCollidableObject",
+    "t": "func",
+    "sig": "NiAVObject*(const hkpCollidable& a_linkedCollidable)",
+    "s": 1905968,
+    "a": 2219504
+  },
+  {
+    "n": "GetDamageForImpact",
+    "t": "func",
+    "sig": "float(float a_mass, float a_speed)",
+    "s": 3824080,
+    "a": 4186016
+  },
+  {
+    "n": "PopTemporaryMass",
+    "t": "func",
+    "sig": "void(bhkRigidBody* a_body)",
+    "s": 3826160,
+    "a": 4188048
+  },
+  {
+    "n": "PushTemporaryMass",
+    "t": "func",
+    "sig": "void(bhkRigidBody* a_body, float a_mass)",
+    "s": 3826032,
+    "a": 4187920
+  },
+  {
+    "n": "ScaleGameplayImpulseForce",
+    "t": "func",
+    "sig": "float(float a_inputForce, bhkRigidBody* a_body, bool a_factorMass)",
+    "s": 3821136,
+    "a": 4183120
+  },
+  {
+    "n": "TESLeveledList::CalculateCurrentFormList",
+    "t": "func",
+    "sig": "void(std::uint16_t a_level, std::int16_t a_count, BSScrapArray<CALCED_OBJECT>& a_calcedObjects, std::uint32_t a_arg5, bool a_usePlayerLevel)",
+    "s": 1669680,
+    "a": 1980976
+  },
+  {
+    "n": "TESNPC::ChangeHeadPart",
+    "t": "func",
+    "sig": "void(BGSHeadPart* a_target)",
+    "s": 3562480,
+    "a": 3926800
+  },
+  {
+    "n": "TESNPC::GetBaseOverlays",
+    "t": "func",
+    "sig": "BGSHeadPart**()",
+    "s": 3574576,
+    "a": 3939392
+  },
+  {
+    "n": "TESNPC::GetUniqueActor",
+    "t": "func",
+    "sig": "Actor*()",
+    "s": 3536576,
+    "a": 3899440
+  },
+  {
+    "n": "TESNPC::GetNumBaseOverlays",
+    "t": "func",
+    "sig": "std::uint32_t()",
+    "s": 3574720,
+    "a": 3939536
+  },
+  {
+    "n": "TESNPC::HasOverlays",
+    "t": "func",
+    "sig": "bool()",
+    "s": 3574304,
+    "a": 3939136
+  },
+  {
+    "n": "TESNPC::SetSkinFromTint",
+    "t": "func",
+    "sig": "void(NiColorA* a_result, TintMask* a_tintMask, bool a_fromTint)",
+    "s": 3540096,
+    "a": 3902848
+  },
+  {
+    "n": "TESNPC::UpdateNeck",
+    "t": "func",
+    "sig": "void(BSFaceGenNiNode* a_faceNode)",
+    "s": 3540688,
+    "a": 3903424
+  },
+  {
+    "n": "TESObjectBOOK::Read",
+    "t": "func",
+    "sig": "bool(TESObjectREFR* a_reader)",
+    "s": 2268912,
+    "a": 2599632
+  },
+  {
+    "n": "TESObjectCELL::GetbhkWorld",
+    "t": "func",
+    "sig": "bhkWorld*()",
+    "s": 2512064,
+    "a": 2854192
+  },
+  {
+    "n": "TESObjectCELL::GetLocation",
+    "t": "func",
+    "sig": "BGSLocation*()",
+    "s": 2499216,
+    "a": 2839824
+  },
+  {
+    "n": "TESObjectCELL::GetRegionList",
+    "t": "func",
+    "sig": "TESRegionList*(bool a_createIfMissing)",
+    "s": 2512800,
+    "a": 2854880
+  },
+  {
+    "n": "TESObjectCELL::GetWaterHeight",
+    "t": "func",
+    "sig": "bool(const NiPoint3& a_pos, float& a_waterHeight)",
+    "s": 2513296,
+    "a": 2855376
+  },
+  {
+    "n": "TESObjectREFR::CreateReference",
+    "t": "func",
+    "sig": "static ObjectRefHandle(ObjectRefHandle& a_handleOut, FormType a_formType, bool a_addActorToProcessList)",
+    "s": 2660080,
+    "a": 3002880
+  },
+  {
+    "n": "TESObjectREFR::FindReferenceFor3D",
+    "t": "func",
+    "sig": "static TESObjectREFR*(NiAVObject* a_object3D)",
+    "s": 2704864,
+    "a": 3049296
+  },
+  {
+    "n": "TESObjectREFR::ActivateRef",
+    "t": "func",
+    "sig": "bool(TESObjectREFR* a_activator, uint8_t a_arg2, TESBoundObject* a_object, int32_t a_count, bool a_defaultProcessingOnly)",
+    "s": 2714624,
+    "a": 3058720
+  },
+  {
+    "n": "TESObjectREFR::AddLock",
+    "t": "func",
+    "sig": "REFR_LOCK*()",
+    "s": 2781808,
+    "a": 3124064
+  },
+  {
+    "n": "TESObjectREFR::AddTeleport",
+    "t": "func",
+    "sig": "DoorTeleportData*()",
+    "s": 2781328,
+    "a": 3123584
+  },
+  {
+    "n": "TESObjectREFR::ApplyArtObject",
+    "t": "func",
+    "sig": "ModelReferenceEffect*(BGSArtObject* a_artObject, float a_duration, TESObjectREFR* a_facingRef, bool a_faceTarget, bool a_attachToCamera, NiAVObject* a_attachNode, bool a_interfaceEffect)",
+    "s": 3209632,
+    "a": 3566368
+  },
+  {
+    "n": "TESObjectREFR::ApplyEffectShader",
+    "t": "func",
+    "sig": "ShaderReferenceEffect*(TESEffectShader* a_effectShader, float a_duration, TESObjectREFR* a_facingRef, bool a_faceTarget, bool a_attachToCamera, NiAVObject* a_attachNode, bool a_interfaceEffect)",
+    "s": 2739072,
+    "a": 3083808
+  },
+  {
+    "n": "TESObjectREFR::CanBeMoved",
+    "t": "func",
+    "sig": "bool()",
+    "s": 2674864,
+    "a": 3018288
+  },
+  {
+    "n": "TESObjectREFR::Enable",
+    "t": "func",
+    "sig": "void(bool a_resetInventory)",
+    "s": 2720144,
+    "a": 3064496
+  },
+  {
+    "n": "TESObjectREFR::GetCalcLevel",
+    "t": "func",
+    "sig": "std::uint16_t(bool a_adjustLevel)",
+    "s": 2780544,
+    "a": 3122576
+  },
+  {
+    "n": "TESObjectREFR::GetCurrentLocation",
+    "t": "func",
+    "sig": "BGSLocation*()",
+    "s": 2725104,
+    "a": 3069408
+  },
+  {
+    "n": "TESObjectREFR::GetDisplayFullName",
+    "t": "func",
+    "sig": "const char*()",
+    "s": 2712048,
+    "a": 3056448
+  },
+  {
+    "n": "TESObjectREFR::GetDistance",
+    "t": "func",
+    "sig": "float(TESObjectREFR* a_other, bool a_disabledRefs, bool a_ignoreWorldspace)",
+    "s": 2726528,
+    "a": 3070864
+  },
+  {
+    "n": "TESObjectREFR::GetEncounterZone",
+    "t": "func",
+    "sig": "BGSEncounterZone*()",
+    "s": 2780320,
+    "a": 3122352
+  },
+  {
+    "n": "TESObjectREFR::GetLock",
+    "t": "func",
+    "sig": "REFR_LOCK*()",
+    "s": 2782400,
+    "a": 3124576
+  },
+  {
+    "n": "TESObjectREFR::GetOwner",
+    "t": "func",
+    "sig": "TESForm*()",
+    "s": 2778736,
+    "a": 3120704
+  },
+  {
+    "n": "TESObjectREFR::GetScale",
+    "t": "func",
+    "sig": "float()",
+    "s": 2673760,
+    "a": 3017152
+  },
+  {
+    "n": "TESObjectREFR::GetStealValue",
+    "t": "func",
+    "sig": "std::uint32_t(const InventoryEntryData* a_entryData, std::uint32_t a_numItems, bool a_useMult)",
+    "s": 1937536,
+    "a": 2252016
+  },
+  {
+    "n": "TESObjectREFR::GetTransform",
+    "t": "func",
+    "sig": "void(NiTransform& a_transform)",
+    "s": 2705200,
+    "a": 3049616
+  },
+  {
+    "n": "TESObjectREFR::GetWeightInContainer",
+    "t": "func",
+    "sig": "float()",
+    "s": 2679744,
+    "a": 3023136
+  },
+  {
+    "n": "TESObjectREFR::HasQuestObject",
+    "t": "func",
+    "sig": "bool()",
+    "s": 2668864,
+    "a": 3011824
+  },
+  {
+    "n": "TESObjectREFR::InitChildActivates",
+    "t": "func",
+    "sig": "void(TESObjectREFR* a_actionRef)",
+    "s": 2788544,
+    "a": 3130864
+  },
+  {
+    "n": "TESObjectREFR::InitInventoryIfRequired",
+    "t": "func",
+    "sig": "bool(bool a_ignoreContainerExtraData)",
+    "s": 1936656,
+    "a": 2250608
+  },
+  {
+    "n": "TESObjectREFR::IsAnOwner",
+    "t": "func",
+    "sig": "bool(const Actor* a_testOwner, bool a_useFaction, bool a_requiresOwner)",
+    "s": 2780896,
+    "a": 3122928
+  },
+  {
+    "n": "TESObjectREFR::IsCrimeToActivate",
+    "t": "func",
+    "sig": "bool()",
+    "s": 2728752,
+    "a": 3073152
+  },
+  {
+    "n": "TESObjectREFR::MoveRefToNewSpace",
+    "t": "func",
+    "sig": "void(TESObjectCELL* a_interior, TESWorldSpace* a_world)",
+    "s": 2717648,
+    "a": 3061952
+  },
+  {
+    "n": "TESObjectREFR::OpenContainer",
+    "t": "func",
+    "sig": "void(std::int32_t a_openType)",
+    "s": 8776352,
+    "a": 9420784
+  },
+  {
+    "n": "TESObjectREFR::SetAngle",
+    "t": "func",
+    "sig": "void(const NiPoint3& a_angle)",
+    "s": 2712912,
+    "a": 3057312
+  },
+  {
+    "n": "TESObjectREFR::SetOwner",
+    "t": "func",
+    "sig": "void(TESForm* a_owner)",
+    "s": 2779488,
+    "a": 3121472
+  },
+  {
+    "n": "TESObjectREFR::SetScale",
+    "t": "func",
+    "sig": "void(float a_scale)",
+    "s": 2673840,
+    "a": 3017232
+  },
+  {
+    "n": "TESObjectREFR::SetTemporary",
+    "t": "func",
+    "sig": "void()",
+    "s": 1658144,
+    "a": 1969056
+  },
+  {
+    "n": "TESObjectREFR::MakeInventoryChanges",
+    "t": "func",
+    "sig": "InventoryChanges*()",
+    "s": 1936960,
+    "a": 2251248
+  },
+  {
+    "n": "TESObjectREFR::MoveTo_Impl",
+    "t": "func",
+    "sig": "void(const ObjectRefHandle& a_targetHandle, TESObjectCELL* a_targetCell, TESWorldSpace* a_selfWorldSpace, const NiPoint3& a_position, const NiPoint3& a_rotation)"
+  },
+  {
+    "n": "TESObjectREFR::PlayAnimation_Impl",
+    "t": "func",
+    "sig": "void(NiControllerManager* a_manager, NiControllerSequence* a_toSeq, NiControllerSequence* a_fromSeq, bool a_arg4)"
+  },
+  {
+    "n": "TESObjectREFR::SetPosition",
+    "t": "func",
+    "sig": "void(const NiPoint3& a_pos)",
+    "s": 2713872,
+    "a": 3058016
+  },
+  {
+    "n": "TESObjectWEAP::GetFireNode",
+    "t": "func",
+    "sig": "NiAVObject*(NiAVObject* a_root)",
+    "s": 2314352,
+    "a": 2648832
+  },
+  {
+    "n": "TESQuestTarget::GetTargetReference",
+    "t": "func",
+    "sig": "RefHandle&(RefHandle& a_out, bool a_useExtraList, TESQuest* a_quest)",
+    "s": 3685440,
+    "a": 4045600
+  },
+  {
+    "n": "TESQuest::EnsureQuestStarted",
+    "t": "func",
+    "sig": "bool(bool& a_result, bool a_startNow)",
+    "s": 3606800,
+    "a": 3972080
+  },
+  {
+    "n": "TESQuest::ForceRefIntoAlias",
+    "t": "func",
+    "sig": "void(std::uint32_t a_aliasID, TESObjectREFR* a_ref)",
+    "s": 3625040,
+    "a": 3989216
+  },
+  {
+    "n": "TESQuest::Reset",
+    "t": "func",
+    "sig": "void()"
+  },
+  {
+    "n": "TESTopicInfo::ResponseData::PopulateResponseText",
+    "t": "func",
+    "sig": "void(TESFile* a_file)",
+    "s": 3725712,
+    "a": 4086320
+  },
+  {
+    "n": "TESWorldSpace::GetSkyCell",
+    "t": "func",
+    "sig": "TESObjectCELL*()",
+    "s": 2843568,
+    "a": 3190896
+  },
+  {
+    "n": "UI3DSceneManager::DetachChild",
+    "t": "func",
+    "sig": "void(NiAVObject* a_obj)",
+    "s": 9254016,
+    "a": 9910160
+  },
+  {
+    "n": "UI3DSceneManager::SetCameraFOV",
+    "t": "func",
+    "sig": "void(float a_fov)",
+    "s": 9255392,
+    "a": 9911728
+  },
+  {
+    "n": "UI3DSceneManager::SetCameraRotate",
+    "t": "func",
+    "sig": "void(const NiMatrix3& a_rotate)",
+    "s": 9255312,
+    "a": 9911648
+  },
+  {
+    "n": "UI3DSceneManager::SetCameraPosition",
+    "t": "func",
+    "sig": "void(const NiPoint3& a_pos)",
+    "s": 9255136,
+    "a": 9911472
+  },
+  {
+    "n": "UIBlurManager::DecrementBlurCount",
+    "t": "func",
+    "sig": "void()",
+    "s": 9261360,
+    "a": 9918080
+  },
+  {
+    "n": "UIBlurManager::IncrementBlurCount",
+    "t": "func",
+    "sig": "void()",
+    "s": 9261296,
+    "a": 9918016
+  },
+  {
+    "n": "UIMessageQueue::AddMessage",
+    "t": "func",
+    "sig": "void(const BSFixedString& a_menuName, UI_MESSAGE_TYPE a_type, IUIMessageData* a_data)",
+    "s": 1462992,
+    "a": 1765984
+  },
+  {
+    "n": "UIMessageQueue::CreateUIMessageData",
+    "t": "func",
+    "sig": "IUIMessageData*(const BSFixedString& a_name)",
+    "s": 15479248,
+    "a": 16417840
+  },
+  {
+    "n": "UIMessageQueue::ProcessCommands",
+    "t": "func",
+    "sig": "void()",
+    "s": 15479024,
+    "a": 16417456
+  },
+  {
+    "n": "Object::Dtor",
+    "t": "func",
+    "sig": "void()",
+    "s": 19417824,
+    "a": 21427712
+  },
+  {
+    "n": "Object::Ctor",
+    "t": "func",
+    "sig": "Object*()",
+    "s": 19451104,
+    "a": 21458736
+  }
+]
