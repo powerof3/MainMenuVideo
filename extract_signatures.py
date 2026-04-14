@@ -748,39 +748,8 @@ def main():
     print(f"  Functions: {len(funcs)} ({with_sig} with signatures)")
     print(f"  Labels: {labels}")
 
-    # Build ENUMS array from header files
+    # Enums are already defined in the PDB, so we skip enum extraction
     enums = []
-    for root, _, files in os.walk(os.path.join(include_root, 'RE')):
-        for f in files:
-            if not f.endswith('.h'): continue
-            try:
-                with open(os.path.join(root, f), 'r', encoding='utf-8', errors='ignore') as fh:
-                    content = fh.read()
-                for em in re.finditer(r'enum\s+(?:class\s+)?(\w+)(?:\s*:\s*\w+)?\s*\{([^}]+)\}', content):
-                    ename = em.group(1)
-                    members = []
-                    val = 0
-                    for line in em.group(2).split('\n'):
-                        line = re.sub(r'//.*', '', line).strip().rstrip(',')
-                        if not line: continue
-                        if '=' in line:
-                            parts = line.split('=', 1)
-                            mname = parts[0].strip()
-                            try:
-                                val = int(parts[1].strip().rstrip(','), 0)
-                            except:
-                                continue
-                        else:
-                            mname = line
-                        if mname and mname.isidentifier():
-                            members.append([mname, val])
-                            val += 1
-                    if members and len(members) > 1:
-                        enums.append({'n': ename, 'm': members})
-            except:
-                pass
-
-    print(f"  Enums: {len(enums)}")
 
     # Write CommonLibGhidra.py
     output_path = os.path.join(base_dir, 'CommonLibGhidra.py')
@@ -812,7 +781,6 @@ def generate_ghidra_script():
 # @category Skyrim
 
 from ghidra.program.model.symbol import SourceType
-from ghidra.program.model.data import EnumDataType, CategoryPath, DataTypeConflictHandler
 from ghidra.app.cmd.disassemble import DisassembleCommand
 from ghidra.app.cmd.function import ApplyFunctionSignatureCmd
 from ghidra.app.util.cparser.C import CParserUtils
@@ -1043,7 +1011,6 @@ def run():
     base_addr = program.getImageBase()
     dtm = program.getDataTypeManager()
     fm = program.getFunctionManager()
-    cat_path = CategoryPath('/CommonLibSSE')
 
     print('Starting CommonLibSSE Reconstruction...')
     print('Target Version: ' + ('AE' if version_key == 'a' else 'SE'))
@@ -1128,15 +1095,7 @@ def run():
             if i % 5000 == 0 and i > 0:
                 print('Progress: ' + str(i) + ' items processed...')
 
-        print('Applying ' + str(len(ENUMS)) + ' enums...')
-        for e in ENUMS:
-            try:
-                edt = EnumDataType(cat_path, e['n'], 4)
-                for k, v in e['m']:
-                    try: edt.add(k, v)
-                    except: pass
-                dtm.addDataType(edt, DataTypeConflictHandler.REPLACE_HANDLER)
-            except: pass
+        # Enums skipped - already defined in PDB
 
     finally:
         program.endTransaction(tx, True)
@@ -1144,7 +1103,6 @@ def run():
     print('Reconstruction Complete.')
     print('Labels: ' + str(count_sym) + ', Functions: ' + str(count_func))
     print('Signatures applied: ' + str(count_sig) + ', Signatures failed: ' + str(count_sig_fail))
-    print('Enums: ' + str(len(ENUMS)))
 
 '''
 
