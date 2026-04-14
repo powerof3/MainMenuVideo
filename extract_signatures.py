@@ -117,7 +117,12 @@ def find_enclosing_function_sig(content, pos):
         ch = pre_full[j]
         if ch == ')': paren_d += 1
         elif ch == '(': paren_d -= 1
-        elif ch == '>': angle_d += 1
+        elif ch == '>':
+            # Don't count '->' as template bracket
+            if j > 0 and pre_full[j - 1] == '-':
+                pass
+            else:
+                angle_d += 1
         elif ch == '<': angle_d -= 1
         if paren_d == 0 and angle_d <= 0:
             if ch in (';', '}', '{'):
@@ -168,6 +173,8 @@ def find_enclosing_function_sig(content, pos):
     ret = re.sub(r'#\w+[^\n]*', '', ret)
     ret = re.sub(r'^.*\b(?:public|private|protected)\s*:\s*', '', ret)
     ret = re.sub(r'\[\[.*?\]\]', '', ret)
+    # Strip template declarations (template <class... Args>)
+    ret = re.sub(r'\btemplate\s*<[^>]*>', '', ret)
     for qual in ['static', 'inline', 'virtual', 'constexpr', 'explicit',
                  'SKYRIM_REL_VR_VIRTUAL', 'friend']:
         ret = re.sub(r'\b' + qual + r'\b', '', ret)
@@ -178,6 +185,12 @@ def find_enclosing_function_sig(content, pos):
             ret = 'void'
         else:
             return None
+
+    # Resolve trailing return type: auto Func(params) -> RetType
+    if ret == 'auto' and trailing:
+        trail_ret = re.match(r'->\s*([\w:<>*& ]+)', trailing)
+        if trail_ret:
+            ret = trail_ret.group(1).strip()
 
     is_const = bool(re.search(r'\bconst\b', trailing.split('override')[0])) if trailing else False
     return ret, func_name, params, class_name, is_const
@@ -241,8 +254,18 @@ def parse_file_for_signatures(file_path, addr_lib):
         sig_info = find_enclosing_function_sig(content, m.start())
         if sig_info:
             ret, func_name, params, enc_class, is_const = sig_info
+            # Use enclosing function's name/class if decltype references a different function
+            # (e.g. VPrint uses decltype(&Print), or source bug uses wrong decltype ref)
+            actual_name = method_name
+            actual_class = class_name
+            if enc_class and func_name:
+                enc_key = enc_class + '::' + func_name
+                decl_key = (class_name + '::' + method_name) if class_name else method_name
+                if enc_key != decl_key:
+                    actual_name = func_name
+                    actual_class = enc_class
             results.append({
-                'name': method_name, 'class': class_name,
+                'name': actual_name, 'class': actual_class,
                 'ret': ret, 'params': params,
                 'se_id': se_id, 'ae_id': ae_id,
                 'se_off': addr_lib.se_db.get(se_id) if se_id else None,
@@ -285,7 +308,20 @@ def parse_file_for_signatures(file_path, addr_lib):
         sig_info = find_enclosing_function_sig(content, m.start())
         func_name = 'func'; class_name = None
         if sig_info:
-            _, func_name, _, class_name, _ = sig_info
+            enc_ret, func_name, enc_params, class_name, _ = sig_info
+            # Prefer the enclosing function's signature over the raw typedef
+            # The typedef includes ABI-level details (explicit this ptr, hidden output params)
+            # while the enclosing function has the clean C++ signature
+            if enc_ret:
+                ret = enc_ret
+                params = enc_params
+        else:
+            # No enclosing function found - strip explicit this pointer from typedef params
+            if class_name and params:
+                param_list = [p.strip() for p in params.split(',')]
+                if param_list and re.match(r'\w[\w:]*\s*\*\s*$', param_list[0]):
+                    param_list = param_list[1:]
+                    params = ', '.join(param_list)
 
         results.append({
             'name': func_name, 'class': class_name,
