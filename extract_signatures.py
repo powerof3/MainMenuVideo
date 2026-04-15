@@ -20,6 +20,8 @@ import os
 import re
 import json
 import struct
+import math
+import ctypes
 
 
 class AddressLibrary:
@@ -543,6 +545,111 @@ def parse_header_classes(file_path):
     return classes
 
 
+def _undecorate(name):
+    """Demangle an MSVC-mangled symbol name using dbghelp.UnDecorateSymbolName."""
+    try:
+        buf = ctypes.create_string_buffer(512)
+        if ctypes.windll.dbghelp.UnDecorateSymbolName(name.encode(), buf, 512, 0x1000):
+            return buf.value.decode('ascii', errors='replace')
+    except Exception:
+        pass
+    return name
+
+
+def load_se_pdb_names(file_path):
+    """Parse a PDB (MSF7) file and return dict of rva -> name for all public function symbols."""
+    if not os.path.exists(file_path):
+        return {}
+
+    with open(file_path, 'rb') as f:
+        data = f.read()
+
+    if not data.startswith(b'Microsoft C/C++ MSF 7.00\r\n\x1aDS\x00\x00\x00'):
+        return {}
+
+    # MSF superblock
+    page_size = struct.unpack_from('<I', data, 32)[0]
+    dir_size  = struct.unpack_from('<I', data, 44)[0]
+    blk_map   = struct.unpack_from('<I', data, 52)[0]
+
+    # Stream directory
+    n_dir_pages = math.ceil(dir_size / page_size)
+    dir_page_list = struct.unpack_from(f'<{n_dir_pages}I', data, blk_map * page_size)
+    dir_data = b''.join(data[p * page_size:(p + 1) * page_size] for p in dir_page_list)[:dir_size]
+
+    n_streams = struct.unpack_from('<I', dir_data, 0)[0]
+    sizes = struct.unpack_from(f'<{n_streams}I', dir_data, 4)
+
+    o = 4 + n_streams * 4
+    stream_pages = []
+    for sz in sizes:
+        if sz == 0 or sz == 0xFFFFFFFF:
+            stream_pages.append([])
+        else:
+            np = math.ceil(sz / page_size)
+            stream_pages.append(list(struct.unpack_from(f'<{np}I', dir_data, o)))
+            o += np * 4
+
+    def read_stream(idx):
+        if idx >= n_streams or sizes[idx] in (0, 0xFFFFFFFF):
+            return b''
+        return b''.join(data[p * page_size:(p + 1) * page_size] for p in stream_pages[idx])[:sizes[idx]]
+
+    # DBI stream (stream 3)
+    dbi = read_stream(3)
+    if len(dbi) < 64:
+        return {}
+
+    (_, _, _,
+     _, _,
+     _, _,
+     sym_rec_idx, _,
+     mod_sz, sec_contrib_sz, sec_map_sz, src_sz, type_srv_sz, _,
+     opt_dbg_sz, ec_sz,
+     _, _, _) = struct.unpack_from('<iIIHHHHHHiiiiiIiiHHI', dbi)
+
+    # Section headers stream index (offset 10 within optional debug header)
+    opt_off = 64 + mod_sz + sec_contrib_sz + sec_map_sz + src_sz + type_srv_sz + ec_sz
+    sec_hdr_idx = struct.unpack_from('<H', dbi, opt_off + 10)[0] if opt_dbg_sz >= 12 else 0xFFFF
+
+    # Section virtual addresses (needed to convert seg:off -> RVA)
+    sections = []
+    if sec_hdr_idx != 0xFFFF:
+        sec_data = read_stream(sec_hdr_idx)
+        sections = [struct.unpack_from('<I', sec_data, i * 40 + 12)[0] for i in range(len(sec_data) // 40)]
+
+    # Parse symbol records stream for S_PUB32 (public function) records
+    sym_data = read_stream(sym_rec_idx)
+    S_PUB32 = 0x110E
+    result = {}
+    o = 0
+    while o + 4 <= len(sym_data):
+        rec_len, rec_typ = struct.unpack_from('<HH', sym_data, o)
+        rec_end = o + 2 + rec_len
+        if rec_len < 2 or rec_end > len(sym_data):
+            break
+        if rec_typ == S_PUB32 and rec_end >= o + 14:
+            pub_flags, off, seg = struct.unpack_from('<IIH', sym_data, o + 4)
+            if pub_flags & 0x2 and 1 <= seg <= len(sections):
+                nul = sym_data.find(b'\x00', o + 14, rec_end)
+                if nul != -1:
+                    name = sym_data[o + 14:nul].decode('ascii', errors='replace')
+                    if name.startswith('?'):
+                        name = _undecorate(name)
+                    # Skip pure auto-generated names with no semantic content
+                    if re.match(r'^FUN_[0-9A-Fa-f]+$', name):
+                        o = rec_end
+                        continue
+                    # Strip embedded full-address suffix (e.g. WriteToSaveGame_1404D62A0)
+                    name = re.sub(r'_14[0-9A-Fa-f]{6,8}$', '', name)
+                    # Replace __ namespace separator with ::, then collapse any over-long runs
+                    name = re.sub(r':{3,}', '::', name.replace('__', '::'))
+                    result[sections[seg - 1] + off] = name
+        o = rec_end
+
+    return result
+
+
 def load_ae_rename_db(file_path, ae_db):
     """Load skyrimae.rename: lines of '<ae_id> <name>', skip version line. Trailing * and _ are stripped from names."""
     result = {}  # ae_offset -> name
@@ -717,7 +824,7 @@ def main():
                     sig_str = 'static ' + sig_str
                     break
 
-        sym = {'n': name, 't': 'func', 'sig': sig_str}
+        sym = {'n': name, 't': 'func', 'sig': sig_str, 'src': 'CommonLibSSE'}
         if se_off: sym['s'] = se_off
         if ae_off: sym['a'] = ae_off
         symbols.append(sym)
@@ -726,7 +833,7 @@ def main():
     for name, offs in rtti_offsets.items():
         if offs.get('se') and offs['se'] not in seen_offsets_se:
             seen_offsets_se.add(offs['se'])
-            sym = {'n': name, 't': 'label', 'sig': ''}
+            sym = {'n': name, 't': 'label', 'sig': '', 'src': 'CommonLibSSE'}
             if offs.get('se'): sym['s'] = offs['se']
             if offs.get('ae'): sym['a'] = offs['ae']
             symbols.append(sym)
@@ -735,7 +842,7 @@ def main():
     for name, offs in vtable_offsets.items():
         if offs.get('se') and offs['se'] not in seen_offsets_se:
             seen_offsets_se.add(offs['se'])
-            sym = {'n': name, 't': 'label', 'sig': ''}
+            sym = {'n': name, 't': 'label', 'sig': '', 'src': 'CommonLibSSE'}
             if offs.get('se'): sym['s'] = offs['se']
             if offs.get('ae'): sym['a'] = offs['ae']
             symbols.append(sym)
@@ -758,7 +865,7 @@ def main():
             if info.get('ret'):
                 sig_str = f"{info['ret']}({info['params']})"
 
-        sym = {'n': name, 't': 'func', 'sig': sig_str}
+        sym = {'n': name, 't': 'func', 'sig': sig_str, 'src': 'CommonLibSSE'}
         if se_off: sym['s'] = se_off
         if ae_off: sym['a'] = ae_off
         symbols.append(sym)
@@ -780,9 +887,33 @@ def main():
         else:
             name_counts[name] = 1
             unique_name = name
-        symbols.append({'n': unique_name, 't': 'func', 'sig': '', 'a': ae_off})
+        symbols.append({'n': unique_name, 't': 'func', 'sig': '', 'a': ae_off, 'src': 'skyrimae.rename'})
         rename_added += 1
     print(f"Added {rename_added} symbols from AE rename database")
+
+    # Fallback: add names from SE PDB for any SE addresses not yet covered
+    se_pdb_path = os.path.join(base_dir, 'pdbs', 'SkyrimSE.pdb')
+    se_pdb = load_se_pdb_names(se_pdb_path)
+    print(f"Loaded {len(se_pdb)} public function symbols from SE PDB")
+    pdb_added = 0
+    for se_off, name in se_pdb.items():
+        if se_off in seen_offsets_se:
+            continue
+        seen_offsets_se.add(se_off)
+        if name in name_counts:
+            name_counts[name] += 1
+            unique_name = f'{name}_{name_counts[name]}'
+        else:
+            name_counts[name] = 1
+            unique_name = name
+        symbols.append({'n': unique_name, 't': 'func', 'sig': '', 's': se_off, 'src': 'SkyrimSE.pdb'})
+        pdb_added += 1
+    print(f"Added {pdb_added} symbols from SE PDB")
+
+    # Normalize __ -> :: in all symbol names
+    for s in symbols:
+        if '__' in s['n']:
+            s['n'] = re.sub(r':{3,}', '::', s['n'].replace('__', '::'))
 
     # Count stats
     funcs = [s for s in symbols if s['t'] == 'func']
@@ -798,7 +929,7 @@ def main():
     enums = []
 
     # Write CommonLibGhidra.py
-    output_path = os.path.join(base_dir, 'CommonLibGhidra.py')
+    output_path = os.path.join(base_dir, 'ghidrascripts', 'CommonLibGhidra.py')
 
     # Read the template (Ghidra script code)
     template_path = os.path.join(base_dir, 'ghidra_script_template.py')
@@ -1091,6 +1222,10 @@ def run():
                 symbol_table.createLabel(addr, final_name, SourceType.USER_DEFINED)
                 used_names_at_addr[addr].add(sname)
                 count_sym += 1
+                if s.get('src') and s['t'] == 'label':
+                    cu = program.getListing().getCodeUnitAt(addr)
+                    if cu:
+                        cu.setComment(0, 'Source: ' + s['src'])
             except: pass
 
             if s['t'] == 'func':
@@ -1105,6 +1240,22 @@ def run():
                         curr_name = f.getName()
                         if curr_name.startswith('FUN_') or curr_name.startswith('sub_'):
                             f.setName(final_name, SourceType.USER_DEFINED)
+
+                        comment_parts = []
+                        se_id = s.get('si')
+                        ae_id = s.get('ai')
+                        if se_id and ae_id:
+                            comment_parts.append('RELOCATION_ID(' + str(se_id) + ', ' + str(ae_id) + ')')
+                        elif se_id:
+                            comment_parts.append('REL::ID(' + str(se_id) + ')')
+                        elif ae_id:
+                            comment_parts.append('REL::ID(' + str(ae_id) + ')')
+                        if s.get('src'):
+                            comment_parts.append('Source: ' + s['src'])
+                        if comment_parts:
+                            cu = program.getListing().getCodeUnitAt(addr)
+                            if cu:
+                                cu.setComment(0, '\\n'.join(comment_parts))
 
                         if 'sig' in s and s['sig']:
                             proto = convert_sig_to_ghidra(s['sig'], final_name)
