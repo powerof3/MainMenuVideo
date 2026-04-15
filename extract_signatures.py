@@ -543,6 +543,31 @@ def parse_header_classes(file_path):
     return classes
 
 
+def load_ae_rename_db(file_path, ae_db):
+    """Load skyrimae.rename: lines of '<ae_id> <name>', skip version line. Trailing * and _ are stripped from names."""
+    result = {}  # ae_offset -> name
+    if not os.path.exists(file_path):
+        return result
+    with open(file_path, 'r', encoding='utf-8', errors='replace') as f:
+        lines = f.readlines()
+    for line in lines[1:]:  # skip version line
+        line = line.strip()
+        if not line:
+            continue
+        parts = line.split(' ', 1)
+        if len(parts) != 2:
+            continue
+        name = parts[1].rstrip('*').rstrip('_')
+        try:
+            ae_id = int(parts[0])
+        except ValueError:
+            continue
+        off = ae_db.get(ae_id)
+        if off:
+            result[off] = name
+    return result
+
+
 def main():
     base_dir = os.path.dirname(os.path.abspath(__file__))
     commonlib_dir = os.path.join(base_dir, 'extern', 'CommonLibSSE')
@@ -737,6 +762,27 @@ def main():
         if se_off: sym['s'] = se_off
         if ae_off: sym['a'] = ae_off
         symbols.append(sym)
+
+    # Fallback: add names from AE rename database for any addresses not yet covered
+    rename_db_path = os.path.join(base_dir, 'extern', 'AddressLibraryDatabase', 'skyrimae.rename')
+    ae_rename = load_ae_rename_db(rename_db_path, addr_lib.ae_db)
+    name_counts = {}
+    for s in symbols:
+        name_counts[s['n']] = name_counts.get(s['n'], 0) + 1
+    rename_added = 0
+    for ae_off, name in ae_rename.items():
+        if ae_off in seen_offsets_ae:
+            continue
+        seen_offsets_ae.add(ae_off)
+        if name in name_counts:
+            name_counts[name] += 1
+            unique_name = f'{name}_{name_counts[name]}'
+        else:
+            name_counts[name] = 1
+            unique_name = name
+        symbols.append({'n': unique_name, 't': 'func', 'sig': '', 'a': ae_off})
+        rename_added += 1
+    print(f"Added {rename_added} symbols from AE rename database")
 
     # Count stats
     funcs = [s for s in symbols if s['t'] == 'func']
