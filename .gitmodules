@@ -2,3 +2,6 @@
 [submodule "extern/CommonLibSSE"]
 	path = extern/CommonLibSSE
 	url = https://github.com/powerof3/CommonLibSSE.git
+[submodule "extern/AddressLibraryDatabase"]
+	path = extern/AddressLibraryDatabase
+	url = https://github.com/meh321/AddressLibraryDatabase
