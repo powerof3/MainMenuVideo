@@ -33,9 +33,9 @@ GhidraImportScripts/
 │   └── vcpkg.json
 ├── extern/
 │   ├── CommonLibSSE/           CommonLibSSE submodule (powerof3/dev branch)
-│   └── AddressLibraryDatabase/ AE rename database submodule
+│   └── AddressLibraryDatabase/ Includes AE rename database
 ├── addresslibrary/
-│   ├── version-1-5-97-0.bin    SE address library (ID → offset)
+│   ├── version-1-5-97-0.bin       SE address library
 │   └── versionlib-1-6-1170-0.bin  AE address library
 ├── pdbs/
 │   ├── GhidraImport_SE_D.pdb   SE debug PDB — written here by the plugin build
@@ -116,7 +116,7 @@ template_types.py ────────────────────�
 1. CommonLibSSE headers — libclang AST (fully-qualified names, signatures)
 2. CommonLibSSE `src/*.cpp` — libclang unity parse (functions not in headers)
 3. `skyrimae.rename` — AE address database fallback names
-4. `SkyrimSE.pdb` — vanilla SE PDB public symbols (fallback, no signatures)
+4. `SkyrimSE.pdb` — Crashlogger SE PDB public symbols (fallback, no signatures)
 
 **Execution order inside Ghidra** (per binary):
 
@@ -156,15 +156,6 @@ is checked out:
 git submodule update --init extern/CommonLibSSE
 ```
 
-### Address library files
-
-Place the address library binaries in `addresslibrary/`:
-
-| File | Source |
-|------|--------|
-| `version-1-5-97-0.bin` | [Address Library for SKSE Plugins (SE)](https://www.nexusmods.com/skyrimspecialedition/mods/32444) |
-| `versionlib-1-6-1170-0.bin` | [Address Library for SKSE Plugins (AE)](https://www.nexusmods.com/skyrimspecialedition/mods/32444) |
-
 ### PDB files
 
 Place debug PDB files in `pdbs/`. These are used to cross-reference struct sizes
@@ -174,7 +165,6 @@ and vtable layouts:
 |------|---------|
 | `GhidraImport_SE_D.pdb` | SE debug build PDB — struct sizes + vtable data |
 | `GhidraImport_AE_D.pdb` | AE debug build PDB — struct sizes + vtable data |
-| `SkyrimSE.pdb` | *(optional)* Vanilla SE PDB — fallback symbol names |
 
 The DIA SDK (installed with Visual Studio) is used to read PDB type info. If
 `msdia140.dll` is present on the system (it usually is after installing VS), it
@@ -183,8 +173,8 @@ fallback if COM is unavailable.
 
 ### Ghidra
 
-- [Ghidra](https://ghidra-sre.org/) 10.x or later
-- The generated scripts use the Ghidra Python (Jython 2.7) scripting environment
+- [Ghidra](https://ghidra-sre.org/) 12.x or later
+- [Python](https://www.python.org/) 3.x
 
 ---
 
@@ -192,15 +182,6 @@ fallback if COM is unavailable.
 
 All paths are relative to the repository root. The generator finds all inputs
 automatically — no environment variables are required.
-
-```
-GhidraImportScripts/
-├── extern/CommonLibSSE/   ← must be populated (git submodule)
-├── addresslibrary/        ← version-1-5-97-0.bin + versionlib-1-6-1170-0.bin
-├── pdbs/                  ← GhidraImport_SE_D.pdb + GhidraImport_AE_D.pdb
-│                            (built by plugin debug build)
-└── extras/                ← optionally SkyrimSE.pdb
-```
 
 ---
 
@@ -251,8 +232,8 @@ Regenerate whenever:
 
 1. Open Ghidra and create a project.
 2. Import `SkyrimSE.exe` (SE) or the AE executable. Use the default PE import
-   options with auto-analysis enabled; let auto-analysis finish before running
-   the scripts.
+   options and skip auto-analysis.
+3. Ignore any error popups. Close them when complete.
 
 ### Run CommonLibImport_SE.py or CommonLibImport_AE.py
 
@@ -263,7 +244,7 @@ In the Ghidra Script Manager (`Window → Script Manager`):
    for AE binaries.
 
 This script:
-- Creates all `RE::` structs, classes, and enums in the Data Type Manager.
+- Creates all structs, classes, and enums in the Data Type Manager.
 - Populates vtable structs with typed function pointer fields.
 - Applies vtable function signatures to the virtual function implementations.
 - Applies all symbol labels and function signatures at computed addresses.
@@ -287,7 +268,7 @@ libclang to produce struct/enum/vtable data and function symbols.
 | `pdbs/GhidraImport_SE_D.pdb` | Authoritative struct sizes and vtable layout |
 | `addresslibrary/` | SE and AE offset databases |
 | `extern/AddressLibraryDatabase/skyrimae.rename` | AE fallback symbol names |
-| `extras/SkyrimSE.pdb` | SE fallback symbol names (optional) |
+| `extras/SkyrimSE.pdb` | SE fallback symbol names |
 | `extra_types.json` | Manually defined types not extractable from headers |
 | `template_types.py` | Template instantiation alias generation (auto-imported) |
 
