@@ -3267,7 +3267,7 @@ def main():
     # name and address are not already represented by any higher-priority source.
     # When the name is already known (e.g. from the AE rename DB) but lacks an SE
     # address, the SE offset is merged in rather than creating a duplicate entry.
-    se_pdb_path = os.path.join(SCRIPT_DIR, 'pdbs', 'SkyrimSE.pdb')
+    se_pdb_path = os.path.join(SCRIPT_DIR, 'extras', 'SkyrimSE.pdb')
     se_pdb_names = load_se_pdb_names(se_pdb_path)
     pdb_added = pdb_merged = 0
     for se_off, name in se_pdb_names.items():

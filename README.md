@@ -197,8 +197,9 @@ automatically — no environment variables are required.
 GhidraImportScripts/
 ├── extern/CommonLibSSE/   ← must be populated (git submodule)
 ├── addresslibrary/        ← version-1-5-97-0.bin + versionlib-1-6-1170-0.bin
-└── pdbs/                  ← GhidraImport_SE_D.pdb + GhidraImport_AE_D.pdb
-                             (built by plugin debug build; + optionally SkyrimSE.pdb)
+├── pdbs/                  ← GhidraImport_SE_D.pdb + GhidraImport_AE_D.pdb
+│                            (built by plugin debug build)
+└── extras/                ← optionally SkyrimSE.pdb
 ```
 
 ---
@@ -286,7 +287,7 @@ libclang to produce struct/enum/vtable data and function symbols.
 | `pdbs/GhidraImport_SE_D.pdb` | Authoritative struct sizes and vtable layout |
 | `addresslibrary/` | SE and AE offset databases |
 | `extern/AddressLibraryDatabase/skyrimae.rename` | AE fallback symbol names |
-| `pdbs/SkyrimSE.pdb` | SE fallback symbol names (optional) |
+| `extras/SkyrimSE.pdb` | SE fallback symbol names (optional) |
 | `extra_types.json` | Manually defined types not extractable from headers |
 | `template_types.py` | Template instantiation alias generation (auto-imported) |
 
