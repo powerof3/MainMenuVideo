@@ -3,8 +3,6 @@
 Toolchain that reverse-engineers Skyrim SE/AE by importing CommonLibSSE type definitions,
 vtable layouts, and function signatures into Ghidra.
 
----
-
 ## Table of Contents
 
 1. [Project Layout](#project-layout)
@@ -174,7 +172,6 @@ fallback if COM is unavailable.
 ### Ghidra
 
 - [Ghidra](https://ghidra-sre.org/) 12.x or later
-- [Python](https://www.python.org/) 3.x
 
 ---
 
@@ -230,10 +227,10 @@ Regenerate whenever:
 
 ### Import the binary
 
-1. Open Ghidra and create a project.
+1. Open Ghidra using `support\pyghidraRun.bat` and create a project.
 2. Import `SkyrimSE.exe` (SE) or the AE executable. Use the default PE import
    options and skip auto-analysis.
-3. Ignore any error popups. Close them when complete.
+3. Ignore any error popups. Close them when the script is complete.
 
 ### Run CommonLibImport_SE.py or CommonLibImport_AE.py
 
