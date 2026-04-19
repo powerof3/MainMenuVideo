@@ -40,7 +40,8 @@ GhidraImportScripts/
 ├── pdbs/
 │   ├── GhidraImport_SE_D.pdb   SE debug PDB — written here by the plugin build
 │   ├── GhidraImport_AE_D.pdb   AE debug PDB — written here by the plugin build
-│   └── SkyrimSE.pdb            Optional: vanilla SE PDB for extra symbol names
+├── extras/
+│   └── SkyrimSE.pdb            Crashlogger SE PDB for extra symbol names
 ├── ghidrascripts/
 │   ├── CommonLibImport_SE.py   Generated: import SE types + vtables + symbols
 │   └── CommonLibImport_AE.py   Generated: import AE types + vtables + symbols
@@ -59,10 +60,8 @@ GhidraImportScripts/
 | Tool | Notes |
 |------|-------|
 | [CMake](https://cmake.org/) | Add to `PATH` |
-| [PowerShell](https://github.com/PowerShell/PowerShell/releases/latest) | |
 | [Vcpkg](https://github.com/microsoft/vcpkg) | Set `VCPKG_ROOT` environment variable |
-| [Visual Studio 2022](https://visualstudio.microsoft.com/) | Desktop development with C++ workload |
-| [CommonLibSSE](https://github.com/powerof3/CommonLibSSE/tree/dev) | `powerof3/dev` branch; set `CommonLibSSEPath` env var |
+| [Visual Studio 2026](https://visualstudio.microsoft.com/) | Desktop development with C++ workload |
 
 ### Register Visual Studio as a CMake Generator
 
