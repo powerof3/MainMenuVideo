@@ -1804,25 +1804,14 @@ def _import_vtable_names():
     memory = currentProgram.getMemory()
     ptr_size = currentProgram.getDefaultPointerSize()
     named_vfuncs = 0
-    dbg_no_label = 0
-    dbg_read_fail = 0
-    dbg_no_func = 0
-    dbg_already_named = 0
-    dbg_label_found = 0
     for vt in VTABLES:
         vname, class_full_name, vtbl_size, category, slots = vt
         class_short = class_full_name.split('::')[-1]
         vtbl_label = 'VTABLE_' + class_short
         vtbl_syms = list(sym_table.getSymbols(vtbl_label))
         if not vtbl_syms:
-            dbg_no_label += 1
             continue
-        dbg_label_found += 1
         vtbl_addr = vtbl_syms[0].getAddress()
-        # Debug: log first few vtable walks
-        if dbg_label_found <= 3:
-            print('  [vtbl-dbg] {} at {} (ptr_size={}, slots={})'.format(
-                vtbl_label, vtbl_addr, ptr_size, len(slots)))
         for slot_off, slot_name, slot_ret, slot_params in slots:
             if slot_name.startswith('fn_'):
                 continue
@@ -1835,23 +1824,14 @@ def _import_vtable_names():
                 else:
                     raw = memory.getInt(ptr_addr) & 0xFFFFFFFF
                 func_addr = currentProgram.getAddressFactory().getDefaultAddressSpace().getAddress(raw)
-                # Debug: log first slot of first few vtables
-                if dbg_label_found <= 3 and slot_off == 0:
-                    print('  [vtbl-dbg]   slot 0: ptr_addr={} raw=0x{:X} func_addr={}'.format(
-                        ptr_addr, raw, func_addr))
                 func = fm.getFunctionAt(func_addr)
                 if not func:
                     DisassembleCommand(func_addr, None, True).applyTo(currentProgram)
                     func = fm.getFunctionAt(func_addr)
                 if not func:
-                    dbg_no_func += 1
-                    if dbg_no_func <= 3:
-                        print('  [vtbl-dbg]   NO FUNC at {} for {}::{} (raw=0x{:X})'.format(
-                            func_addr, class_short, slot_name, raw))
                     continue
                 curr = func.getName()
                 if not (curr.startswith('FUN_') or curr.startswith('sub_')):
-                    dbg_already_named += 1
                     continue
                 func.setName(class_short + '::' + slot_name, SourceType.USER_DEFINED)
                 cu = currentProgram.getListing().getCodeUnitAt(func_addr)
@@ -1881,14 +1861,9 @@ def _import_vtable_names():
                     except Exception:
                         pass
                 named_vfuncs += 1
-            except Exception as ex:
-                dbg_read_fail += 1
-                if dbg_read_fail <= 5:
-                    print('  [vtbl-dbg]   EXCEPTION at {}::{} slot +0x{:X}: {}'.format(
-                        class_short, slot_name, slot_off, str(ex)))
+            except Exception:
+                pass
     print('Named {} virtual functions from vtable addresses'.format(named_vfuncs))
-    print('  vtable debug: labels_found={} no_label={} read_fail={} no_func={} already_named={}'.format(
-        dbg_label_found, dbg_no_label, dbg_read_fail, dbg_no_func, dbg_already_named))
 
     # --- Second pass: walk VTABLE_ labels that have no struct definition ---
     # These are VTABLE_ symbols created by _import_symbols() but not in VTABLES.
