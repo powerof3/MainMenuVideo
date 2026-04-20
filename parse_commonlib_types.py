@@ -1327,6 +1327,26 @@ def convert_sig_to_ghidra(sig, func_name):
         t = t.replace('std::int8_t', 'char')
         t = t.replace('std::size_t', 'ulonglong')
         t = t.replace('std::ptrdiff_t', 'longlong')
+        # Plain C99/POSIX fixed-width types
+        t = re.sub(r'\\buint64_t\\b', 'ulonglong', t)
+        t = re.sub(r'\\bint64_t\\b', 'longlong', t)
+        t = re.sub(r'\\buint32_t\\b', 'uint', t)
+        t = re.sub(r'\\bint32_t\\b', 'int', t)
+        t = re.sub(r'\\buint16_t\\b', 'ushort', t)
+        t = re.sub(r'\\bint16_t\\b', 'short', t)
+        t = re.sub(r'\\buint8_t\\b', 'uchar', t)
+        t = re.sub(r'\\bint8_t\\b', 'char', t)
+        t = re.sub(r'\\bsize_t\\b', 'ulonglong', t)
+        # stdlib/C++ types that survive namespace stripping
+        t = re.sub(r'\\bresult\\b', 'int', t)
+        t = re.sub(r'\\bhours\\b', 'longlong', t)
+        t = re.sub(r'\\bminutes\\b', 'longlong', t)
+        t = re.sub(r'\\bseconds\\b', 'longlong', t)
+        t = re.sub(r'\\bErrorCode\\b', 'uint', t)
+        t = re.sub(r'\\bmbstate_t\\b', 'void', t)
+        t = re.sub(r'\\bchar16_t\\b', 'ushort', t)
+        t = re.sub(r'\\bchar32_t\\b', 'uint', t)
+        t = re.sub(r'\\bwchar_t\\b', 'ushort', t)
         t = re.sub(r'\\bconst\\b\\s*', '', t)
         t = re.sub(r'(\\w[\\w:<>]*)\\s*&', r'\\1 *', t)
         for _ in range(5):
@@ -1382,8 +1402,12 @@ def convert_sig_to_ghidra(sig, func_name):
 
     if '::' in func_name and not is_static:
         class_name = func_name.rsplit('::', 1)[0]
-        class_name = class_name.split('::')[-1] if '::' in class_name else class_name
-        this_param = class_name + ' * this'
+        class_name_simple = class_name.split('::')[-1] if '::' in class_name else class_name
+        if class_name_simple and created.get(class_name_simple):
+            this_type = class_name_simple
+        else:
+            this_type = 'void'
+        this_param = this_type + ' * this'
         if ghidra_params == 'void':
             ghidra_params = this_param
         else:
@@ -1697,16 +1721,14 @@ def _type_to_c(type_str):
     if type_str.startswith('ptr:struct:'):
         name = type_str[11:]
         if '<' in name:
-            alias = TEMPLATE_C_ALIAS_MAP.get(name)
-            return (alias if alias else 'void') + ' *'
+            return 'void *'
         return name.split('::')[-1] + ' *'
     if type_str.startswith('ptr:enum:'):
         return type_str[9:].split('::')[-1] + ' *'
     if type_str.startswith('struct:'):
         name = type_str[7:]
         if '<' in name:
-            alias = TEMPLATE_C_ALIAS_MAP.get(name)
-            return alias if alias else 'void *'
+            return 'void *'
         return name.split('::')[-1]
     if type_str.startswith('enum:'):
         return type_str[5:].split('::')[-1]
@@ -1787,11 +1809,15 @@ def _import_vtable_names():
                         proto = (_type_to_c(slot_ret) + ' ' + slot_name +
                                  '(' + ', '.join(param_parts) + ')')
                         proto = _patch_templates(proto)
-                        func_def = CParserUtils.parseSignature(None, currentProgram,
-                            C_TYPE_PRELUDE + '\\n' + proto if C_TYPE_PRELUDE else proto, True)
-                        if func_def:
-                            ApplyFunctionSignatureCmd(func_addr, func_def,
-                                SourceType.USER_DEFINED, True, False).applyTo(currentProgram)
+                        for _vt_proto in (proto, sanitize_unknown_types(proto)):
+                            try:
+                                func_def = CParserUtils.parseSignature(None, currentProgram, _vt_proto, True)
+                                if func_def:
+                                    ApplyFunctionSignatureCmd(func_addr, func_def,
+                                        SourceType.USER_DEFINED, True, False).applyTo(currentProgram)
+                                    break
+                            except Exception:
+                                pass
                     except Exception:
                         pass
                 named_vfuncs += 1
