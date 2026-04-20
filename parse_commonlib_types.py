@@ -636,12 +636,15 @@ def _load_pdb_types_dia(pdb_path):
             pass
 
         vfuncs = []
+        _class_short = name.split('::')[-1]
         try:
             for fsym in _dia_iter(sym.findChildren(_SymTagFunction, None, 0)):
                 try:
                     if fsym.intro and fsym.virtual:
                         voff = fsym.virtualBaseOffset
                         fname = fsym.name
+                        if fname == '__vecDelDtor':
+                            fname = '~' + _class_short
                         if fname and '<' not in fname and 0 <= voff < 0x4000:
                             vfuncs.append((fname, voff))
                 except Exception:
@@ -1571,10 +1574,11 @@ def _import_types():
         vname, class_full_name, vtbl_size, category, slots = vt
         s = StructureDataType(CategoryPath(category), vname, vtbl_size)
         for slot_off, slot_name, slot_ret, slot_params in slots:
+            field_name = slot_name.replace('~', '_dtor_') if slot_name.startswith('~') else slot_name
             if slot_off + 8 <= vtbl_size:
                 try:
                     if slot_ret is not None and slot_params is not None:
-                        fdef = FunctionDefinitionDataType(CategoryPath(category), slot_name + '_t', dtm)
+                        fdef = FunctionDefinitionDataType(CategoryPath(category), field_name + '_t', dtm)
                         ret_dt = resolve_type(slot_ret)
                         if ret_dt:
                             fdef.setReturnType(ret_dt)
@@ -1585,9 +1589,9 @@ def _import_types():
                                 param_defs.append(ParameterDefinitionImpl(pname, pdt, ''))
                             fdef.setArguments(param_defs)
                         fptr = dtm.getPointer(dtm.addDataType(fdef, CONFLICT), 8)
-                        s.replaceAtOffset(slot_off, fptr, 8, slot_name, '')
+                        s.replaceAtOffset(slot_off, fptr, 8, field_name, '')
                     else:
-                        s.replaceAtOffset(slot_off, _PTR, 8, slot_name, '')
+                        s.replaceAtOffset(slot_off, _PTR, 8, field_name, '')
                 except Exception:
                     pass
         dt = dtm.addDataType(s, CONFLICT)
@@ -2320,6 +2324,37 @@ def _pdb_fields_to_clang(pdb_fields, total_size, structs_by_short=None):
             'size': fsize,
         })
     return result
+
+
+def _upgrade_template_struct_fields(structs, enums):
+    """Apply structural rules to template structs that were populated from PDB but still have
+    untyped (bytes:/bare ptr) fields.  This handles concrete template instantiations like
+    NiTMap<K,V>, BSTSmallSharedArray<T>, detail::BSFixedString<char>, etc.
+    Returns the count of structs upgraded.
+    """
+    from template_structural_rules import structural_rule as _rule
+    known_sz = {k: v['size'] for k, v in structs.items() if v.get('size', 0) > 0}
+    known_sz.update({k: v.get('size', 0) for k, v in enums.items() if v.get('size', 0) > 0})
+
+    count = 0
+    for st_name, st in structs.items():
+        if '<' not in st_name:
+            continue
+        fields = st.get('fields', [])
+        if not fields:
+            continue
+        # Only upgrade if there are unresolved fields worth improving
+        has_untyped = any(
+            f['type'].startswith('bytes:') or f['type'] == 'ptr'
+            for f in fields
+        )
+        if not has_untyped:
+            continue
+        rule_sz, rule_fields = _rule(st_name, known_sz)
+        if rule_sz and rule_sz == st.get('size', 0) and rule_fields:
+            st['fields'] = rule_fields
+            count += 1
+    return count
 
 
 def _build_vtable_structs(structs):
@@ -3180,6 +3215,13 @@ def run_version(version, symbols_json, fallback_symbols_json='[]'):
             print('Discovered {} template instantiation aliases'.format(len(_tmpl.template_map)))
     except ImportError:
         template_source = ''
+
+    # Apply structural rules to all template structs from PDB that still have untyped fields.
+    # This upgrades bytes:/ptr fields in concrete template types (e.g. NiTMap, BSTSmallSharedArray)
+    # that were parsed from the PDB but had incomplete type information.
+    _upgraded = _upgrade_template_struct_fields(structs, enums)
+    if _upgraded:
+        print('Structural-rule upgrade: {} template structs improved'.format(_upgraded))
 
     print('Generating Ghidra script...')
     n_enums, n_structs = generate_script(enums, structs, vtable_structs, output_path, version, symbols_json, fallback_symbols_json, c_prelude, template_source)
