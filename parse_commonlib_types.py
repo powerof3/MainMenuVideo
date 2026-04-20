@@ -706,6 +706,55 @@ else:
 
     _THIRD_PARTY_INCLUDE = _STUB_DIR
 
+# <windows.h> (pulled in by spdlog/details/windows_include.h) defines macros
+# with identical names to REX::W32 constexpr variables (CP_UTF8, MAX_PATH,
+# MEM_RELEASE, IMAGE_SCN_MEM_EXECUTE, …).  When libclang sees REX::W32::CP_UTF8
+# it macro-expands CP_UTF8 → 65001, producing REX::W32::65001 which is an
+# "expected unqualified-id" error.
+#
+# Fix: shadow spdlog/details/windows_include.h with a wrapper that includes the
+# real <windows.h> and then #undefs every name that REX::W32 redeclares as a
+# constexpr variable.  This gives spdlog its Windows types while keeping the
+# REX::W32 namespace free of conflicting preprocessor macros.
+import re as _re
+
+_rex_w32_constexpr_names = []
+for _root, _dirs, _files in os.walk(os.path.join(COMMONLIB_INCLUDE, 'REX', 'W32')):
+    for _fname in _files:
+        if _fname.endswith('.h'):
+            try:
+                with open(os.path.join(_root, _fname), encoding='utf-8', errors='replace') as _fh:
+                    for _line in _fh:
+                        _m = _re.match(r'\s*inline\s+(?:constexpr\s+|const\s+)?auto\s+(\w+)', _line)
+                        if _m:
+                            _rex_w32_constexpr_names.append(_m.group(1))
+            except OSError:
+                pass
+
+_WIN_STUB_DIR = os.path.join(SCRIPT_DIR, '_clang_stubs')
+os.makedirs(os.path.join(_WIN_STUB_DIR, 'spdlog', 'details'), exist_ok=True)
+os.makedirs(os.path.join(_WIN_STUB_DIR, 'spdlog', 'sinks'), exist_ok=True)
+_win_inc_stub = os.path.join(_WIN_STUB_DIR, 'spdlog', 'details', 'windows_include.h')
+# spdlog/sinks/wincolor_sink-inl.h uses INVALID_HANDLE_VALUE directly as a macro.
+# Stub it empty so we can safely undef INVALID_HANDLE_VALUE to prevent
+# REX::W32::INVALID_HANDLE_VALUE from being macro-expanded in CommonLibSSE headers.
+with open(os.path.join(_WIN_STUB_DIR, 'spdlog', 'sinks', 'wincolor_sink-inl.h'), 'w') as _f:
+    _f.write('#pragma once\n')
+# Also undefine Windows SDK function-like macros that shadow REX::W32 functions:
+# IMAGE_FIRST_SECTION: complex pointer macro in winnt.h, redeclared inline in KERNEL32.h
+# IMAGE_SNAP_BY_ORDINAL64: function-like macro in winnt.h, shadows REX::W32 inline function
+_EXTRA_MACRO_UNDEFS = ['IMAGE_FIRST_SECTION', 'IMAGE_SNAP_BY_ORDINAL64']
+_undef_block = '\n'.join('#undef ' + _n for _n in _rex_w32_constexpr_names + _EXTRA_MACRO_UNDEFS)
+with open(_win_inc_stub, 'w') as _f:
+    _f.write(
+        '#pragma once\n'
+        '// Wrapper: include real windows.h then undefine all REX::W32 macro name conflicts\n'
+        '#ifndef NOMINMAX\n#define NOMINMAX\n#endif\n'
+        '#ifndef WIN32_LEAN_AND_MEAN\n#define WIN32_LEAN_AND_MEAN\n#endif\n'
+        '#include <windows.h>\n'
+        + _undef_block + '\n'
+    )
+
 PARSE_ARGS_BASE = [
     '-x', 'c++',
     '-std=c++23',
@@ -713,7 +762,18 @@ PARSE_ARGS_BASE = [
     '-fms-extensions',
     '-DWIN32', '-D_WIN64',
     '-D_ALLOW_COMPILER_AND_STL_VERSION_MISMATCH',  # suppress STL1000 clang version check
-    '-isystem', _THIRD_PARTY_INCLUDE,  # binary_io/spdlog (vcpkg or stubs)
+    # MSVC's ucrt/stddef.h defines offsetof as a reinterpret_cast expression, which
+    # is not constexpr, causing static_assert(offsetof(...)==N) to fail as
+    # "not an integral constant expression".  _CRT_USE_BUILTIN_OFFSETOF makes
+    # stddef.h use __builtin_offsetof instead, which is always constexpr in clang.
+    '-D_CRT_USE_BUILTIN_OFFSETOF',
+    # spdlog/common.h defines SPDLOG_HEADER_ONLY (and includes all -inl.h files) unless
+    # SPDLOG_COMPILED_LIB is set.  wincolor_sink-inl.h uses INVALID_HANDLE_VALUE as a
+    # raw macro, conflicting with our undef.  Pretend spdlog is a compiled library so
+    # none of the inl files are pulled in.
+    '-DSPDLOG_COMPILED_LIB',
+    '-I' + _WIN_STUB_DIR,                          # shadow spdlog/details/windows_include.h
+    '-isystem', _THIRD_PARTY_INCLUDE,              # binary_io/spdlog (vcpkg or stubs)
     '-I' + COMMONLIB_INCLUDE,
 ]
 
