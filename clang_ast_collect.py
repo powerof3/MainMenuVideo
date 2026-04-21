@@ -184,8 +184,10 @@ def _collect_enum(node, full_name: str, ns_path: List[str],
     node_name = resolved_name if resolved_name is not None else node.get('name')
     if not node_name:
         return None
-    # Size: derive from fixedUnderlyingType.qualType
-    under = node.get('fixedUnderlyingType', {}).get('qualType', 'int')
+    # Size: prefer desugaredQualType (typedefs resolved) over qualType.
+    # e.g. `enum : UPInt` — qualType='UPInt', desugaredQualType='unsigned long long'.
+    fut = node.get('fixedUnderlyingType', {}) or {}
+    under = fut.get('desugaredQualType') or fut.get('qualType', 'int')
     size_map = {
         'bool': 1, 'char': 1, 'signed char': 1, 'unsigned char': 1,
         'short': 2, 'unsigned short': 2, 'wchar_t': 2,
@@ -195,6 +197,9 @@ def _collect_enum(node, full_name: str, ns_path: List[str],
         'std::uint32_t': 4, 'std::int32_t': 4, 'uint32_t': 4, 'int32_t': 4,
         'std::uint64_t': 8, 'std::int64_t': 8, 'uint64_t': 8, 'int64_t': 8,
         'long long': 8, 'unsigned long long': 8,
+        'size_t': 8, 'ptrdiff_t': 8, 'intptr_t': 8, 'uintptr_t': 8,
+        'std::size_t': 8, 'std::ptrdiff_t': 8,
+        'std::intptr_t': 8, 'std::uintptr_t': 8,
     }
     size = size_map.get(under.strip(), 4)
 

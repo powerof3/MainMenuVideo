@@ -30,9 +30,14 @@ from __future__ import annotations
 import os
 import re as _re
 import tempfile
-from typing import Callable, Dict, List, Optional, Tuple
+from typing import Any, Callable, Dict, List, Optional, Tuple
 
-import clang.cindex as ci
+# libclang is an optional dependency. Only required for the libclang template
+# layout mode; the rules/clangd paths and `_qualify_re` don't need it.
+try:
+    import clang.cindex as ci
+except ImportError:
+    ci = None  # type: ignore[assignment]
 
 # ---------------------------------------------------------------------------
 # Primitive / stdlib type sets (must NOT receive a RE:: prefix)
@@ -196,7 +201,7 @@ def _gen_tu_content(skyrim_h: str, names: List[str]) -> str:
 # Field extraction from a libclang type
 # ---------------------------------------------------------------------------
 
-def _extract_fields(typ: ci.Type, map_type_fn: Callable) -> Tuple[int, List[dict]]:
+def _extract_fields(typ: 'Any', map_type_fn: Callable) -> Tuple[int, List[dict]]:
     """
     Extract (size_bytes, fields) from a libclang record Type.
 
@@ -328,7 +333,7 @@ def _process_batch(
     )
 
     # Build name-index → alias cursor map from _tmpl_probe namespace
-    alias_map: Dict[int, ci.Cursor] = {}
+    alias_map: Dict[int, Any] = {}
     for cursor in tu.cursor.get_children():
         if (cursor.kind == ci.CursorKind.NAMESPACE
                 and cursor.spelling == '_tmpl_probe'):
@@ -373,9 +378,9 @@ _BUILTIN_PRIM_MAP = {
     ci.TypeKind.LONG: 'i32',    ci.TypeKind.ULONG: 'u32',
     ci.TypeKind.LONGLONG: 'i64',ci.TypeKind.ULONGLONG: 'u64',
     ci.TypeKind.FLOAT: 'f32',   ci.TypeKind.DOUBLE: 'f64',
-}
+} if ci is not None else {}
 
-def _builtin_map_type(typ: ci.Type, depth: int = 0) -> str:
+def _builtin_map_type(typ: 'Any', depth: int = 0) -> str:
     """Minimal type mapper used when parse_commonlib_types._map_type is not available."""
     if depth > 8:
         return 'ptr'

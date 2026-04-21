@@ -129,12 +129,26 @@ def _find_libclang_dll():
 
 
 _dll = _find_libclang_dll()
-if not _dll:
-    print('ERROR: Could not find libclang.dll. Install libclang: pip install libclang')
-    sys.exit(1)
+try:
+    if not _dll:
+        raise ImportError('libclang.dll not found')
+    import clang.cindex as ci
+    ci.Config.set_library_file(_dll)
+    _LIBCLANG_AVAILABLE = True
+except ImportError:
+    ci = None
+    _LIBCLANG_AVAILABLE = False
 
-import clang.cindex as ci
-ci.Config.set_library_file(_dll)
+
+def _require_libclang(flag_name: str) -> None:
+    """Exit with guidance when a libclang-only code path is selected but the
+    Python libclang bindings aren't installed.  The clang-ast pipeline is the
+    default; libclang modes are opt-in fallbacks."""
+    if not _LIBCLANG_AVAILABLE:
+        print('ERROR: {} requires the Python libclang bindings.'.format(flag_name))
+        print('       Install with: pip install libclang')
+        print('       Or use the clang-ast pipeline (default).')
+        sys.exit(1)
 
 # ---------------------------------------------------------------------------
 # Paths
@@ -493,11 +507,19 @@ from template_structural_rules import structural_rule as _structural_rule
 _TEMPLATE_MODE: str = 'rules'
 
 # ---------------------------------------------------------------------------
-# Types collection mode (set by --types-mode CLI flag, default='libclang')
+# Types collection mode (set by --types-mode CLI flag, default='clang-ast')
 # ---------------------------------------------------------------------------
-# 'libclang'  — walk the libclang TranslationUnit (original path)
 # 'clang-ast' — clang.exe -ast-dump=json via clang_ast_collect.collect_types
-_TYPES_MODE: str = 'libclang'
+# 'libclang'  — walk the libclang TranslationUnit (fallback, requires libclang)
+_TYPES_MODE: str = 'clang-ast'
+
+# ---------------------------------------------------------------------------
+# Relocation scan mode (set by --reloc-mode CLI flag, default='clang-ast')
+# ---------------------------------------------------------------------------
+# 'clang-ast' — clang.exe -ast-dump=json via clang_ast_reloc.collect_relocations
+# 'libclang'  — walk the libclang TranslationUnit with full function bodies
+#                (fallback, requires libclang)
+_RELOC_MODE: str = 'clang-ast'
 
 
 def _find_msdia_dll():
@@ -796,50 +818,55 @@ PARSE_ARGS_BASE = [
     '-I' + COMMONLIB_INCLUDE,
 ]
 
-PARSE_OPTIONS = (
-    ci.TranslationUnit.PARSE_SKIP_FUNCTION_BODIES |
-    ci.TranslationUnit.PARSE_INCOMPLETE
-)
-# Full parse (includes function bodies) — used for relocation ID collection
-PARSE_OPTIONS_FULL = ci.TranslationUnit.PARSE_INCOMPLETE
+# libclang-specific constants — only populated when the bindings are importable.
+# The clang-ast pipeline doesn't touch these; the libclang fallback code paths
+# reference them only after `_require_libclang()` has checked availability.
+if _LIBCLANG_AVAILABLE:
+    PARSE_OPTIONS = (
+        ci.TranslationUnit.PARSE_SKIP_FUNCTION_BODIES |
+        ci.TranslationUnit.PARSE_INCOMPLETE
+    )
+    PARSE_OPTIONS_FULL = ci.TranslationUnit.PARSE_INCOMPLETE
 
-# ---------------------------------------------------------------------------
-# Type mapping helpers
-# ---------------------------------------------------------------------------
+    _PRIM_MAP = {
+        ci.TypeKind.BOOL:       'bool',
+        ci.TypeKind.CHAR_S:     'i8',
+        ci.TypeKind.SCHAR:      'i8',
+        ci.TypeKind.CHAR_U:     'u8',
+        ci.TypeKind.UCHAR:      'u8',
+        ci.TypeKind.SHORT:      'i16',
+        ci.TypeKind.USHORT:     'u16',
+        ci.TypeKind.INT:        'i32',
+        ci.TypeKind.UINT:       'u32',
+        ci.TypeKind.LONG:       'i32',   # Windows: long = 32-bit
+        ci.TypeKind.ULONG:      'u32',
+        ci.TypeKind.LONGLONG:   'i64',
+        ci.TypeKind.ULONGLONG:  'u64',
+        ci.TypeKind.FLOAT:      'f32',
+        ci.TypeKind.DOUBLE:     'f64',
+        ci.TypeKind.VOID:       'void',
+        ci.TypeKind.WCHAR:      'u16',
+    }
 
-_PRIM_MAP = {
-    ci.TypeKind.BOOL:       'bool',
-    ci.TypeKind.CHAR_S:     'i8',
-    ci.TypeKind.SCHAR:      'i8',
-    ci.TypeKind.CHAR_U:     'u8',
-    ci.TypeKind.UCHAR:      'u8',
-    ci.TypeKind.SHORT:      'i16',
-    ci.TypeKind.USHORT:     'u16',
-    ci.TypeKind.INT:        'i32',
-    ci.TypeKind.UINT:       'u32',
-    ci.TypeKind.LONG:       'i32',   # Windows: long = 32-bit
-    ci.TypeKind.ULONG:      'u32',
-    ci.TypeKind.LONGLONG:   'i64',
-    ci.TypeKind.ULONGLONG:  'u64',
-    ci.TypeKind.FLOAT:      'f32',
-    ci.TypeKind.DOUBLE:     'f64',
-    ci.TypeKind.VOID:       'void',
-    ci.TypeKind.WCHAR:      'u16',
-}
+    _POINTER_KINDS = {
+        ci.TypeKind.POINTER,
+        ci.TypeKind.LVALUEREFERENCE,
+        ci.TypeKind.RVALUEREFERENCE,
+        ci.TypeKind.MEMBERPOINTER,
+        ci.TypeKind.BLOCKPOINTER,
+        ci.TypeKind.OBJCOBJECTPOINTER,
+    }
 
-_POINTER_KINDS = {
-    ci.TypeKind.POINTER,
-    ci.TypeKind.LVALUEREFERENCE,
-    ci.TypeKind.RVALUEREFERENCE,
-    ci.TypeKind.MEMBERPOINTER,
-    ci.TypeKind.BLOCKPOINTER,
-    ci.TypeKind.OBJCOBJECTPOINTER,
-}
-
-_FUNC_KINDS = {
-    ci.TypeKind.FUNCTIONPROTO,
-    ci.TypeKind.FUNCTIONNOPROTO,
-}
+    _FUNC_KINDS = {
+        ci.TypeKind.FUNCTIONPROTO,
+        ci.TypeKind.FUNCTIONNOPROTO,
+    }
+else:
+    PARSE_OPTIONS = None
+    PARSE_OPTIONS_FULL = None
+    _PRIM_MAP = {}
+    _POINTER_KINDS = set()
+    _FUNC_KINDS = set()
 
 
 def _get_full_qual_name(cursor):
@@ -2025,13 +2052,24 @@ def generate_script(enums, structs, vtable_structs, output_path, version, symbol
     lines.append(']')
     lines.append('')
 
-    # Emit ENUMS
+    # Emit ENUMS.  Ghidra's EnumDataType.add(name, long value) takes a Java
+    # `long` (signed 64-bit); values >= 2^63 from unsigned C++ enums overflow.
+    # Convert to the equivalent signed representation so the bit pattern is
+    # preserved.
+    def _wrap_signed(values):
+        out = []
+        for n, v in values:
+            if v >= (1 << 63):
+                v -= (1 << 64)
+            out.append((n, v))
+        return out
+
     lines.append('ENUMS = [')
     for en in sorted(enums.values(), key=lambda e: e['full_name']):
         name = en['name']
         size = en['size']
         category = en['category']
-        values = en['values']
+        values = _wrap_signed(en['values'])
         val_str = repr(values)
         lines.append('    ({}, {}, {}, {}),'.format(
             repr(name), repr(size), repr(category), val_str))
@@ -3333,7 +3371,7 @@ def main():
     import json as _json
     import argparse
 
-    global _TEMPLATE_MODE, _TYPES_MODE
+    global _TEMPLATE_MODE, _TYPES_MODE, _RELOC_MODE
     ap = argparse.ArgumentParser(description='Parse CommonLibSSE and generate Ghidra import script')
     ap.add_argument(
         '--template-mode',
@@ -3349,23 +3387,43 @@ def main():
     )
     ap.add_argument(
         '--types-mode',
-        choices=['libclang', 'clang-ast'],
-        default='libclang',
+        choices=['clang-ast', 'libclang'],
+        default='clang-ast',
         help=(
             'Type collection backend. '
-            '"libclang" (default) uses the Python libclang bindings; '
-            '"clang-ast" uses clang.exe -ast-dump=json + -fdump-record-layouts-complete '
-            'via subprocess (covers RE/REX/REL namespaces, required for the '
-            'libclang-free migration).'
+            '"clang-ast" (default) uses clang.exe -ast-dump=json + -fdump-record-layouts '
+            'via subprocess (covers RE/REX/REL namespaces, libclang-free); '
+            '"libclang" uses the Python libclang bindings (fallback, requires libclang).'
+        ),
+    )
+    ap.add_argument(
+        '--reloc-mode',
+        choices=['clang-ast', 'libclang'],
+        default='clang-ast',
+        help=(
+            'Relocation ID scan backend. '
+            '"clang-ast" (default) uses clang.exe -ast-dump=json (with function bodies) '
+            'via clang_ast_reloc for a libclang-free pipeline; '
+            '"libclang" parses Skyrim.h and src/ .cpp unity via libclang (fallback).'
         ),
     )
     args = ap.parse_args()
     _TEMPLATE_MODE = args.template_mode
     _TYPES_MODE = args.types_mode
+    _RELOC_MODE = args.reloc_mode
+    # Check libclang availability for any selected libclang-backed mode
+    if _TEMPLATE_MODE in ('libclang', 'compare'):
+        _require_libclang('--template-mode=' + _TEMPLATE_MODE)
+    if _TYPES_MODE == 'libclang':
+        _require_libclang('--types-mode=libclang')
+    if _RELOC_MODE == 'libclang':
+        _require_libclang('--reloc-mode=libclang')
     if _TEMPLATE_MODE != 'rules':
         print(f'Template mode: {_TEMPLATE_MODE}')
-    if _TYPES_MODE != 'libclang':
+    if _TYPES_MODE != 'clang-ast':
         print(f'Types mode: {_TYPES_MODE}')
+    if _RELOC_MODE != 'clang-ast':
+        print(f'Reloc mode: {_RELOC_MODE}')
 
     # Load address databases (binary data, not source scanning)
     addr_lib = AddressLibrary()
@@ -3373,7 +3431,8 @@ def main():
     print('SE entries: {}, AE entries: {}'.format(len(addr_lib.se_db), len(addr_lib.ae_db)))
 
     # Parse both versions with full function-body parsing to collect relocation IDs
-    print('\n=== Collecting symbols via libclang ===')
+    scan_backend = 'clang.exe (JSON AST)' if _RELOC_MODE == 'clang-ast' else 'libclang'
+    print(f'\n=== Collecting symbols via {scan_backend} ===')
     se_func_syms = []
     se_label_syms = []
     ae_func_syms = []
@@ -3382,30 +3441,46 @@ def main():
     ae_offset_map = {}
     static_methods = set()
 
+    if _RELOC_MODE == 'clang-ast':
+        import clang_ast_reloc as _car
+
     for version, is_ae in (('se', False), ('ae', True)):
         cfg = VERSIONS[version]
         parse_args = PARSE_ARGS_BASE + cfg['defines']
         print('\n--- {} relocation scan ---'.format(version.upper()))
-        idx = ci.Index.create()
-        tu = idx.parse(SKYRIM_H, args=parse_args, options=PARSE_OPTIONS_FULL)
-        errors = [d for d in tu.diagnostics if d.severity >= ci.Diagnostic.Error
-                  and 'binary_io/file_stream.hpp' not in d.spelling]
-        if errors:
-            print('  Parse errors ({} total, showing first 3):'.format(len(errors)))
-            for e in errors[:3]:
-                print('  ', e.spelling)
-        fs, ls, off_map, sm = _collect_relocations_from_tu(tu, addr_lib, is_ae)
+        if _RELOC_MODE == 'clang-ast':
+            fs, ls, off_map, sm = _car.collect_relocations(
+                SKYRIM_H, parse_args, addr_lib, is_ae, verbose=True)
+        else:
+            idx = ci.Index.create()
+            tu = idx.parse(SKYRIM_H, args=parse_args, options=PARSE_OPTIONS_FULL)
+            errors = [d for d in tu.diagnostics if d.severity >= ci.Diagnostic.Error
+                      and 'binary_io/file_stream.hpp' not in d.spelling]
+            if errors:
+                print('  Parse errors ({} total, showing first 3):'.format(len(errors)))
+                for e in errors[:3]:
+                    print('  ', e.spelling)
+            fs, ls, off_map, sm = _collect_relocations_from_tu(tu, addr_lib, is_ae)
         static_methods |= sm  # union of SE and AE static methods (same headers)
         if is_ae:
             ae_func_syms, ae_label_syms, ae_offset_map = fs, ls, off_map
         else:
             se_func_syms, se_label_syms, se_offset_map = fs, ls, off_map
 
-    # Parse src/ cpp files via libclang (unity build) for functions not in Skyrim.h
+    # Parse src/ cpp files (unity build) for functions not in Skyrim.h
     src_dir = os.path.join(SCRIPT_DIR, 'extern', 'CommonLibSSE', 'src')
     if os.path.isdir(src_dir):
-        src_func_syms = _collect_src_relocations(
-            src_dir, addr_lib, se_offset_map, ae_offset_map)
+        if _RELOC_MODE == 'clang-ast':
+            src_func_syms = _car.collect_src_relocations(
+                src_dir,
+                PARSE_ARGS_BASE + VERSIONS['se']['defines'],
+                PARSE_ARGS_BASE + VERSIONS['ae']['defines'],
+                addr_lib, se_offset_map, ae_offset_map, skyrim_h=SKYRIM_H,
+                verbose=True,
+            )
+        else:
+            src_func_syms = _collect_src_relocations(
+                src_dir, addr_lib, se_offset_map, ae_offset_map)
     else:
         src_func_syms = []
         print('  src/ dir not found, skipping')
