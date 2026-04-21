@@ -19,9 +19,9 @@ import re
 import subprocess
 from typing import Dict, List, Optional, Tuple
 
-from clang_template_layouts import _qualify_re
 from clangd_template_layouts import (
     _parse_record_layouts,
+    _qualify_re,
     _record_type_to_pipeline,
     find_clang_binary,
 )

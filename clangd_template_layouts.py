@@ -6,13 +6,10 @@ struct field layouts for C++ template instantiations.  This is the
 "clangd method" — it uses the same LLVM/Clang toolchain that clangd is
 built on, giving full compiler-grade template instantiation accuracy.
 
-Unlike the libclang Python bindings approach (clang_template_layouts.py),
-this approach:
+This approach:
   - Invokes the full clang compiler, which handles all C++ edge cases
   - Gets inherited/base-class fields inlined into the layout dump
   - Parses the -fdump-record-layouts text format for structured output
-  - Does not require the libclang Python package version to match the
-    installed clang version
 
 Usage:
     from clangd_template_layouts import extract_layouts, find_clang_binary
@@ -39,8 +36,123 @@ import tempfile
 import winreg
 from typing import Dict, List, Optional, Tuple
 
-# Import the name-qualification helpers from the libclang module
-from clang_template_layouts import _qualify_re, _split_tmpl_args
+# ---------------------------------------------------------------------------
+# Primitive / stdlib type sets (must NOT receive a RE:: prefix)
+# ---------------------------------------------------------------------------
+
+_PRIM_BARE: frozenset = frozenset({
+    'void', 'bool', 'char', 'wchar_t', 'float', 'double', 'auto',
+    'short', 'int', 'long',
+    'signed', 'unsigned', '__int64', '__int32', '__int16', '__int8',
+    'nullptr_t',
+    'uint8_t',  'uint16_t',  'uint32_t',  'uint64_t',
+    'int8_t',   'int16_t',   'int32_t',   'int64_t',
+    'size_t', 'ptrdiff_t', 'uintptr_t', 'intptr_t',
+})
+
+_PRIM_MULTI: frozenset = frozenset({
+    'signed char', 'unsigned char',
+    'signed short', 'unsigned short',
+    'signed int',   'unsigned int',
+    'signed long',  'unsigned long',
+    'long long',    'signed long long', 'unsigned long long',
+    'long double',
+    'unsigned __int64', 'signed __int64',
+})
+
+_PRIM_ALL: frozenset = _PRIM_BARE | _PRIM_MULTI
+
+
+def _split_tmpl_args(inner: str) -> List[str]:
+    """Split a template argument string at commas at depth 0."""
+    args: List[str] = []
+    depth = 0
+    start = 0
+    for i, ch in enumerate(inner):
+        if ch == '<':
+            depth += 1
+        elif ch == '>':
+            depth -= 1
+        elif ch == ',' and depth == 0:
+            args.append(inner[start:i].strip())
+            start = i + 1
+    tail = inner[start:].strip()
+    if tail:
+        args.append(tail)
+    return args
+
+
+def _qualify_bare(name: str) -> str:
+    """
+    Qualify a simple (non-template, no cv/ptr qualifiers) name.
+    Adds RE:: prefix unless the name is a primitive, a numeric literal,
+    or already prefixed with RE:: / std::.
+    """
+    name = name.strip()
+    if not name:
+        return name
+    for prefix in ('RE::', 'REX::', 'REL::', 'std::', 'fmt::', 'WinAPI::', 'SKSE::'):
+        if name.startswith(prefix):
+            return name
+    if name in _PRIM_ALL:
+        return name
+    if _re.fullmatch(r'[+-]?[0-9]+(?:\.[0-9]*)?[uUlLfF]*', name):
+        return name
+    return 'RE::' + name
+
+
+def _qualify_re(name: str) -> str:
+    """
+    Recursively qualify a C++ type name string with RE:: namespace prefix.
+
+    Examples:
+      'Actor *'              → 'RE::Actor *'
+      'BSTArray<Actor *>'    → 'RE::BSTArray<RE::Actor *>'
+      'unsigned int'         → 'unsigned int'
+      'std::equal_to<int>'   → 'std::equal_to<int>'
+      'const TESForm *'      → 'const RE::TESForm *'
+    """
+    name = name.strip()
+    if not name:
+        return name
+
+    leading = ''
+    for q in ('const ', 'volatile '):
+        while name.startswith(q):
+            leading += q
+            name = name[len(q):]
+
+    trailing = ''
+    _changed = True
+    while _changed:
+        _changed = False
+        for t in (' const', ' *', ' &', '*', '&'):
+            if name.endswith(t):
+                trailing = t + trailing
+                name = name[: -len(t)].rstrip()
+                _changed = True
+                break
+
+    name = name.strip()
+
+    lt = name.find('<')
+    if lt >= 0 and name.endswith('>'):
+        outer = name[:lt].strip()
+        inner_str = name[lt + 1 : -1]
+        qual_outer = _qualify_bare(outer)
+        inner_args = _split_tmpl_args(inner_str)
+        qual_args = ', '.join(_qualify_re(a) for a in inner_args)
+        return f'{leading}{qual_outer}<{qual_args}>{trailing}'
+
+    if name in _PRIM_ALL:
+        return f'{leading}{name}{trailing}'
+
+    parts = name.split('::')
+    first = parts[0].strip()
+    if first in _PRIM_BARE or first in ('std', 'RE', 'REX', 'REL', 'WinAPI', 'SKSE', 'fmt'):
+        return f'{leading}{name}{trailing}'
+
+    return f'{leading}RE::{name}{trailing}'
 
 # ---------------------------------------------------------------------------
 # Clang binary discovery
@@ -309,7 +421,7 @@ def _record_type_to_pipeline(raw: str) -> str:
 
 
 # ---------------------------------------------------------------------------
-# Synthetic TU generation (reuse _qualify_re from clang_template_layouts)
+# Synthetic TU generation
 # ---------------------------------------------------------------------------
 
 def _gen_tu_content(skyrim_h: str, names: List[str]) -> str:
@@ -527,93 +639,3 @@ def _process_batch(
             results[name] = (0, [])
 
 
-# ---------------------------------------------------------------------------
-# Comparison utility
-# ---------------------------------------------------------------------------
-
-def compare_layouts(
-    rules_results: Dict[str, Tuple[int, List[dict]]],
-    libclang_results: Dict[str, Tuple[int, List[dict]]],
-    clangd_results: Dict[str, Tuple[int, List[dict]]],
-    names: Optional[List[str]] = None,
-) -> Dict[str, dict]:
-    """
-    Compare layout results from three methods (rules, libclang, clangd).
-
-    Returns a dict mapping type names to a comparison report:
-    {
-        'rules':   (size, n_fields),
-        'libclang':(size, n_fields),
-        'clangd':  (size, n_fields),
-        'match': bool,   # all three agree on size
-        'notes': [str],  # disagreements
-    }
-    """
-    all_names = names or sorted(
-        set(rules_results) | set(libclang_results) | set(clangd_results)
-    )
-    report = {}
-    for name in all_names:
-        r_sz,  r_f  = rules_results.get(name,   (0, []))
-        lc_sz, lc_f = libclang_results.get(name, (0, []))
-        cd_sz, cd_f = clangd_results.get(name,   (0, []))
-
-        notes = []
-        sizes = {s for s in (r_sz, lc_sz, cd_sz) if s > 0}
-        if len(sizes) > 1:
-            notes.append(
-                f'size disagreement: rules={r_sz} libclang={lc_sz} clangd={cd_sz}'
-            )
-
-        field_names = {
-            'rules':    {f['name'] for f in r_f},
-            'libclang': {f['name'] for f in lc_f},
-            'clangd':   {f['name'] for f in cd_f},
-        }
-        for method_a, method_b in [('rules', 'libclang'),
-                                    ('rules', 'clangd'),
-                                    ('libclang', 'clangd')]:
-            diff = field_names[method_a] ^ field_names[method_b]
-            if diff:
-                notes.append(
-                    f'field diff {method_a} vs {method_b}: {sorted(diff)}'
-                )
-
-        report[name] = {
-            'rules':    (r_sz,  len(r_f)),
-            'libclang': (lc_sz, len(lc_f)),
-            'clangd':   (cd_sz, len(cd_f)),
-            'match':    len(notes) == 0,
-            'notes':    notes,
-        }
-    return report
-
-
-def print_comparison(report: Dict[str, dict], show_matches: bool = False) -> None:
-    """Print a human-readable comparison report."""
-    mismatches = {k: v for k, v in report.items() if not v['match']}
-    matches    = {k: v for k, v in report.items() if v['match']}
-
-    print(f'\n=== Template Layout Method Comparison ===')
-    print(f'Total types compared: {len(report)}')
-    print(f'  Full agreement:   {len(matches)}')
-    print(f'  Disagreements:    {len(mismatches)}')
-
-    if mismatches:
-        print('\n--- Disagreements ---')
-        for name, info in sorted(mismatches.items()):
-            r_sz, r_n  = info['rules']
-            lc_sz, lc_n = info['libclang']
-            cd_sz, cd_n = info['clangd']
-            print(f'\n  {name}')
-            print(f'    rules:    size={r_sz:4}  fields={r_n}')
-            print(f'    libclang: size={lc_sz:4}  fields={lc_n}')
-            print(f'    clangd:   size={cd_sz:4}  fields={cd_n}')
-            for note in info['notes']:
-                print(f'    ! {note}')
-
-    if show_matches and matches:
-        print('\n--- Agreements ---')
-        for name, info in sorted(matches.items()):
-            r_sz, r_n = info['rules']
-            print(f'  {name}: size={r_sz} fields={r_n}')
