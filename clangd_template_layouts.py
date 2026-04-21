@@ -147,6 +147,9 @@ def _parse_record_layouts(text: str) -> Dict[str, Tuple[int, List[dict]]]:
                 if m_rec:
                     first_seen = True
                     type_name = m_rec.group(1).strip()
+                    # Strip trailing annotations like '(empty)' that appear after
+                    # the name on the header line for empty records.
+                    type_name = _re.sub(r'\s*\((?:empty|base)\)\s*$', '', type_name)
                 continue
 
             # Base-class wrapper: skip the marker line itself, do NOT push frame,

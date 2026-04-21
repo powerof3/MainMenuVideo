@@ -95,8 +95,9 @@ def _qualify_bare(name: str) -> str:
     name = name.strip()
     if not name:
         return name
-    if name.startswith('RE::') or name.startswith('std::'):
-        return name
+    for prefix in ('RE::', 'REX::', 'REL::', 'std::', 'fmt::', 'WinAPI::', 'SKSE::'):
+        if name.startswith(prefix):
+            return name
     if name in _PRIM_ALL:
         return name
     # Numeric literal (integer or float)
@@ -163,7 +164,7 @@ def _qualify_re(name: str) -> str:
     # Split at '::' — qualify first component only if unqualified
     parts = name.split('::')
     first = parts[0].strip()
-    if first in _PRIM_BARE or first in ('std', 'RE', 'WinAPI', 'SKSE'):
+    if first in _PRIM_BARE or first in ('std', 'RE', 'REX', 'REL', 'WinAPI', 'SKSE', 'fmt'):
         return f'{leading}{name}{trailing}'
 
     # Add RE:: prefix to the whole scoped name

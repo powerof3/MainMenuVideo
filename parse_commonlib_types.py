@@ -492,6 +492,13 @@ from template_structural_rules import structural_rule as _structural_rule
 # 'compare'  — run all three and report differences (does NOT change output)
 _TEMPLATE_MODE: str = 'rules'
 
+# ---------------------------------------------------------------------------
+# Types collection mode (set by --types-mode CLI flag, default='libclang')
+# ---------------------------------------------------------------------------
+# 'libclang'  — walk the libclang TranslationUnit (original path)
+# 'clang-ast' — clang.exe -ast-dump=json via clang_ast_collect.collect_types
+_TYPES_MODE: str = 'libclang'
+
 
 def _find_msdia_dll():
     """Locate msdia140.dll — checks VS, PIX, and the registry CLSID path."""
@@ -3100,20 +3107,26 @@ def run_version(version, symbols_json, fallback_symbols_json='[]'):
         print('ERROR: Could not find Skyrim.h at', SKYRIM_H)
         sys.exit(1)
 
-    print('Parsing CommonLibSSE headers...')
-    idx = ci.Index.create()
-    tu = idx.parse(SKYRIM_H, args=parse_args, options=PARSE_OPTIONS)
+    if _TYPES_MODE == 'clang-ast':
+        print('Collecting types via clang.exe (-ast-dump=json)...')
+        import clang_ast_collect as _cac
+        enums, structs = _cac.collect_types(SKYRIM_H, parse_args, RE_INCLUDE, verbose=True)
+        print('Found {} enums, {} structs/classes'.format(len(enums), len(structs)))
+    else:
+        print('Parsing CommonLibSSE headers...')
+        idx = ci.Index.create()
+        tu = idx.parse(SKYRIM_H, args=parse_args, options=PARSE_OPTIONS)
 
-    errors = [d for d in tu.diagnostics if d.severity >= ci.Diagnostic.Error
-              and 'binary_io/file_stream.hpp' not in d.spelling]
-    if errors:
-        print('Parse errors ({} total, showing first 5):'.format(len(errors)))
-        for e in errors[:5]:
-            print(' ', e.spelling)
+        errors = [d for d in tu.diagnostics if d.severity >= ci.Diagnostic.Error
+                  and 'binary_io/file_stream.hpp' not in d.spelling]
+        if errors:
+            print('Parse errors ({} total, showing first 5):'.format(len(errors)))
+            for e in errors[:5]:
+                print(' ', e.spelling)
 
-    print('Collecting types...')
-    enums, structs = _collect_types(tu)
-    print('Found {} enums, {} structs/classes'.format(len(enums), len(structs)))
+        print('Collecting types...')
+        enums, structs = _collect_types(tu)
+        print('Found {} enums, {} structs/classes'.format(len(enums), len(structs)))
 
     _compute_vfuncs_from_libclang(structs)
 
@@ -3320,7 +3333,7 @@ def main():
     import json as _json
     import argparse
 
-    global _TEMPLATE_MODE
+    global _TEMPLATE_MODE, _TYPES_MODE
     ap = argparse.ArgumentParser(description='Parse CommonLibSSE and generate Ghidra import script')
     ap.add_argument(
         '--template-mode',
@@ -3334,10 +3347,25 @@ def main():
             '"compare" runs all three and prints a comparison (output unchanged).'
         ),
     )
+    ap.add_argument(
+        '--types-mode',
+        choices=['libclang', 'clang-ast'],
+        default='libclang',
+        help=(
+            'Type collection backend. '
+            '"libclang" (default) uses the Python libclang bindings; '
+            '"clang-ast" uses clang.exe -ast-dump=json + -fdump-record-layouts-complete '
+            'via subprocess (covers RE/REX/REL namespaces, required for the '
+            'libclang-free migration).'
+        ),
+    )
     args = ap.parse_args()
     _TEMPLATE_MODE = args.template_mode
+    _TYPES_MODE = args.types_mode
     if _TEMPLATE_MODE != 'rules':
         print(f'Template mode: {_TEMPLATE_MODE}')
+    if _TYPES_MODE != 'libclang':
+        print(f'Types mode: {_TYPES_MODE}')
 
     # Load address databases (binary data, not source scanning)
     addr_lib = AddressLibrary()
