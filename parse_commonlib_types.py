@@ -2343,8 +2343,14 @@ def _upgrade_template_struct_fields(structs, enums):
     untyped (bytes:/bare ptr) fields.  This handles concrete template instantiations like
     NiTMap<K,V>, BSTSmallSharedArray<T>, detail::BSFixedString<char>, etc.
     Returns the count of structs upgraded.
+
+    The struct keys here are the bare 'display' names (RE:: stripped from outer AND inner
+    template args).  The rule system propagates caller qualification into inner template
+    arg type strings — so we fully re-qualify the name before calling the rule to preserve
+    RE:: on inner args in the emitted field types.
     """
     from template_structural_rules import structural_rule as _rule
+    from clang_template_layouts import _qualify_re
     known_sz = {k: v['size'] for k, v in structs.items() if v.get('size', 0) > 0}
     known_sz.update({k: v.get('size', 0) for k, v in enums.items() if v.get('size', 0) > 0})
 
@@ -2353,16 +2359,15 @@ def _upgrade_template_struct_fields(structs, enums):
         if '<' not in st_name:
             continue
         fields = st.get('fields', [])
-        if not fields:
-            continue
-        # Only upgrade if there are unresolved fields worth improving
+        # Upgrade if there are unresolved fields worth improving — OR the struct is
+        # an empty template shell (no fields) where the rule provides a _pad filler.
         has_untyped = any(
             f['type'].startswith('bytes:') or f['type'] == 'ptr'
             for f in fields
         )
-        if not has_untyped:
+        if fields and not has_untyped:
             continue
-        rule_sz, rule_fields = _rule(st_name, known_sz)
+        rule_sz, rule_fields = _rule(_qualify_re(st_name), known_sz)
         if rule_sz and rule_sz == st.get('size', 0) and rule_fields:
             st['fields'] = rule_fields
             count += 1

@@ -86,96 +86,106 @@ def find_clang_binary() -> Optional[str]:
 # Layout dump output parser
 # ---------------------------------------------------------------------------
 
-_BLOCK_RE = _re.compile(
-    r'\*\*\* Dumping AST Record Layout\s*\n'
-    r'(.*?)'
-    r'\[sizeof=(\d+)',
-    _re.DOTALL,
-)
-
-_FIELD_RE = _re.compile(
-    r'^\s*(\d+)\s+\|\s+(?:(?:struct|class|union|enum)\s+)?'  # offset | [type-kind] type_name
-    r'(\S.*?)\s+(\w+)\s*$'                                     # type  field_name
-)
-
-_RECORD_NAME_RE = _re.compile(
-    r'^\s*(\d+)\s+\|\s+'
-    r'(?:class|struct|union)\s+'
-    r'(.+?)\s*$'
-)
-
-
 def _parse_record_layouts(text: str) -> Dict[str, Tuple[int, List[dict]]]:
     """
     Parse the output of clang -fdump-record-layouts.
 
     Returns a dict: type_name → (sizeof, [{'name', 'offset', 'size', 'type'}, ...])
-    where type_name is the full qualified name as printed by clang (e.g.
-    'RE::BSTArray<RE::Actor *>').
+    where type_name is the full qualified name as printed by clang.
 
-    Fields include inherited base-class fields (they appear inlined in the dump).
+    Indentation handling: clang indents nested records by 2 spaces per depth.
+    The outer record header has 1 space after '|'; direct fields / base class
+    markers have 3 spaces; fields inside a base class have 5 spaces (they are
+    FLATTENED into the outer record and we want them), while sub-fields inside
+    a nested value-struct field (like Color 'max' at offset 0 containing
+    u8 red/green/blue/alpha) also have 5 spaces — but we must NOT include them
+    because the outer record just has the single struct field by value.
+
+    Distinction: a line at indent N marked '(base)' is a base-class wrapper —
+    its sub-fields at indent N+2 belong to the outer record via inheritance.
+    A line at indent N that IS a field (record-typed, no '(base)') pushes a
+    skip frame: subsequent lines at indent > N are its sub-fields and are
+    skipped until we return to indent <= N.
     """
     results: Dict[str, Tuple[int, List[dict]]] = {}
 
-    # Split into per-type blocks
-    blocks = _re.split(r'\*\*\* Dumping AST Record Layout', text)
-    for block in blocks[1:]:  # skip leading empty
-        # Get sizeof
+    for block in _re.split(r'\*\*\* Dumping AST Record Layout', text)[1:]:
         m_sz = _re.search(r'\[sizeof=(\d+)', block)
         if not m_sz:
             continue
         sizeof_bytes = int(m_sz.group(1))
 
-        lines = block.splitlines()
-        if not lines:
-            continue
-
-        # First non-empty line gives the record name (offset | class Name)
         type_name = ''
         fields: List[dict] = []
         first_seen = False
+        value_field_indents: List[int] = []   # stack of indent levels of active value-field parents
 
-        for line in lines:
+        for line in block.splitlines():
             line = line.rstrip()
-            if not line or line.startswith('['):
+            if not line or line.lstrip().startswith('['):
+                continue
+            bar = line.find('|')
+            if bar < 0:
+                continue
+            rest = line[bar + 1:]
+            indent = len(rest) - len(rest.lstrip())
+            content = rest.strip()
+            if not content:
                 continue
 
-            # Match "offset | [class/struct] TypeName" for the first line (record decl)
-            m_rec = _re.match(r'^\s*(\d+)\s+\|\s+(?:class|struct|union)\s+(.+?)\s*$', line)
-            if m_rec and not first_seen:
-                first_seen = True
-                type_name = m_rec.group(2).strip()
+            # Pop value-field frames whose depth we have exited
+            while value_field_indents and indent <= value_field_indents[-1]:
+                value_field_indents.pop()
+
+            # Still inside a nested value field — skip this sub-field
+            if value_field_indents:
                 continue
 
-            # Base class injection line: "  [BASE]  0 | struct Base  (base)"  or
-            # "(base)" annotation
-            if '(base)' in line or '(empty)' in line:
+            # Record header (indent=1, first line)
+            if not first_seen and indent == 1:
+                m_rec = _re.match(r'(?:class|struct|union)\s+(.+?)\s*$', content)
+                if m_rec:
+                    first_seen = True
+                    type_name = m_rec.group(1).strip()
                 continue
 
-            # Match "  offset |  [optional-type-kw] type_name  field_name"
-            m_f = _re.match(
-                r'^\s+(\d+)\s+\|\s+'          # offset |
-                r'(?:(?:class|struct|union|enum)\s+)?'   # optional type-kind
-                r'(.+?)\s+'                   # type (greedy up to last word)
-                r'(\w+)\s*$',                 # field_name
-                line
-            )
-            if m_f:
-                offset = int(m_f.group(1))
-                ftype_raw = m_f.group(2).strip()
-                fname = m_f.group(3)
-                # Skip unnamed padding / compiler-inserted fields
-                if fname.startswith('_vptr') or fname == '':
-                    continue
-                fields.append({
-                    'name': fname,
-                    'offset': offset,
-                    'size': 0,   # filled in below from next field offset or sizeof
-                    'type': _record_type_to_pipeline(ftype_raw),
-                })
+            # Base-class wrapper: skip the marker line itself, do NOT push frame,
+            # so the sub-fields (at indent+2) get included as inherited fields.
+            if '(base)' in content:
+                continue
+            if '(empty)' in content:
+                continue
+
+            # Parse offset + field decl
+            m_off = _re.match(r'^\s*(\d+)\s+\|', line)
+            if not m_off:
+                continue
+
+            # Detect record-typed field (nested value struct/class/union):
+            # these lines begin with 'class '/'struct '/'union ' AND have no (base)
+            is_record_field = bool(_re.match(r'^(?:class|struct|union)\s+', content))
+
+            m_tn = _re.match(
+                r'^(?:(?:class|struct|union|enum)\s+)?(.+?)\s+(\w+)\s*$', content)
+            if not m_tn:
+                continue
+            ftype_raw = m_tn.group(1).strip()
+            fname = m_tn.group(2)
+            if fname.startswith('_vptr') or fname == '':
+                continue
+
+            fields.append({
+                'name': fname,
+                'offset': int(m_off.group(1)),
+                'size': 0,
+                'type': _record_type_to_pipeline(ftype_raw),
+            })
+            # If this field is a record type, its sub-fields follow at deeper indent
+            # and must be skipped (they belong to the nested record, not to us).
+            if is_record_field:
+                value_field_indents.append(indent)
 
         if type_name:
-            # Back-fill field sizes from offsets
             _backfill_sizes(fields, sizeof_bytes)
             results[type_name] = (sizeof_bytes, fields)
 
@@ -243,25 +253,31 @@ _CLANG_TYPE_MAP: Dict[str, str] = {
 }
 
 
+_KW_ANYWHERE_RE = _re.compile(r'\b(?:class|struct|union|enum)\s+')
+
+
+def _strip_type_keywords(raw: str) -> str:
+    """Strip all 'class '/'struct '/'union '/'enum ' keyword tokens anywhere in the string."""
+    return _KW_ANYWHERE_RE.sub('', raw)
+
+
 def _record_type_to_pipeline(raw: str) -> str:
     """
     Convert a raw type string from -fdump-record-layouts to a pipeline type string.
 
-    Examples:
-        'RE::Actor *'            → 'ptr:struct:RE::Actor'
-        'unsigned int'           → 'i32'
-        'std::uint32_t'          → 'u32'
-        'float'                  → 'f32'
-        'element_type *'         → 'ptr'   (template param placeholder)
-        'RE::NiPointer<...>'     → 'struct:RE::NiPointer<...>'
-    """
-    raw = raw.strip()
+    Clang's record layout dump omits the RE:: prefix on nested template arguments
+    (prints 'RE::NiPointer<TESObjectREFR>' instead of 'RE::NiPointer<RE::TESObjectREFR>'),
+    so inner template args must be re-qualified before emitting the struct reference.
 
-    # Strip leading type keyword (clang sometimes adds 'struct', 'class', etc.)
-    for kw in ('class ', 'struct ', 'union ', 'enum '):
-        if raw.startswith(kw):
-            raw = raw[len(kw):].strip()
-            break
+    Examples:
+        'RE::Actor *'                  → 'ptr:struct:RE::Actor'
+        'unsigned int'                 → 'i32'
+        'std::uint32_t'                → 'u32'
+        'float'                        → 'f32'
+        'element_type *'               → 'ptr'   (template param placeholder)
+        'RE::NiPointer<TESObjectREFR>' → 'struct:RE::NiPointer<RE::TESObjectREFR>'
+    """
+    raw = _strip_type_keywords(raw.strip()).strip()
 
     # Pointer / reference
     if raw.endswith('*') or raw.endswith('&'):
@@ -283,9 +299,9 @@ def _record_type_to_pipeline(raw: str) -> str:
         count = int(m_arr.group(2))
         return f'arr:{elem_type}:{count}'
 
-    # Qualified struct/class name
+    # Qualified struct/class name — re-qualify nested template args (RE:: prefix)
     if raw:
-        return 'struct:' + raw
+        return 'struct:' + _qualify_re(raw)
     return 'ptr'
 
 
