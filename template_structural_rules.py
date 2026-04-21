@@ -63,17 +63,21 @@ _IMPL1      = lambda sz: [_f('_impl', 0, sz)]
 _IMPL4      = [_f('_impl', 0, 4)]
 _IMPL8      = [_f('_impl', 0, 8)]
 
-# BSTScatterTable heap-allocator layout (confirmed from PDB): 48 bytes
-# sentinel_ptr(8) + _pad08(8) + capacity(4) + free(4) + good(4) + pad(4) + allocator(8) + pad(8)
+# BSTScatterTable heap-allocator layout (confirmed from PDB + header): 48 bytes
+# Field 0: _sentinel (entry_type* — sentinel node for empty-slot detection)
+# Field 8: _allocPad (allocator internal uint64, NOT a pointer)
+# Field 16-28: capacity/free/good/pad1C counters
+# Field 32: _entries (std::byte* — raw hash bucket storage)
+# Field 40: _allocPad2 (allocator trailing uint64, NOT a pointer)
 _BSTSCATTERTABLE_HEAP_FIELDS = [
-    _f('_pad00',    0,  8, 'ptr'),
-    _f('_pad08',    8,  8, 'ptr'),
-    _int_field('_capacity', 16, 4),
-    _int_field('_free',     20, 4),
-    _int_field('_good',     24, 4),
-    _int_field('_pad1C',    28, 4),
-    _f('_sentinel', 32, 8, 'ptr'),
-    _f('_pad28',    40, 8, 'ptr'),
+    _f('_sentinel',  0,  8, 'ptr'),
+    _int_field('_allocPad',   8,  8),
+    _int_field('_capacity',  16,  4),
+    _int_field('_free',      20,  4),
+    _int_field('_good',      24,  4),
+    _int_field('_pad1C',     28,  4),
+    _f('_entries',  32,  8, 'ptr'),
+    _int_field('_allocPad2', 40,  8),
 ]
 
 # ---------------------------------------------------------------------------
@@ -125,17 +129,32 @@ def _integral_size(typ):
     return INTEGRAL_SIZES.get(typ.strip(), 0)
 
 
+_PRIM_PTR = {
+    'float': 'ptr:f32', 'double': 'ptr:f64',
+    'char': 'ptr:i8', 'unsigned char': 'ptr:i8', 'wchar_t': 'ptr:i16',
+    'short': 'ptr:i16', 'unsigned short': 'ptr:i16',
+    'int': 'ptr:i32', 'unsigned int': 'ptr:i32', 'long': 'ptr:i32',
+    'unsigned long': 'ptr:i32',
+    'long long': 'ptr:i64', 'unsigned long long': 'ptr:i64',
+    '__int64': 'ptr:i64', 'unsigned __int64': 'ptr:i64',
+}
+
+
 def _ptr_type_for(arg):
     """Build a typed pointer type string for a field that stores T*.
 
     Examples:
       'Actor'       → 'ptr:struct:RE::Actor'
       'Actor *'     → 'ptr:ptr:struct:RE::Actor'   (array of pointers)
-      'unsigned int'→ 'ptr'                        (pointer to primitive)
+      'float'       → 'ptr:f32'                    (pointer to float)
+      'unsigned int'→ 'ptr:i32'                    (pointer to uint32)
     """
     arg = arg.strip()
+    # Named primitive → typed primitive pointer
+    if arg in _PRIM_PTR:
+        return _PRIM_PTR[arg]
     if _integral_size(arg):
-        return 'ptr'
+        return 'ptr'   # fallback for unknown integral types
     # Strip trailing 'const' qualifier before the star
     if arg.endswith(' const'):
         arg = arg[:-6].strip()
@@ -274,7 +293,7 @@ def _rule_bstarray(outer, args, known_sizes=None):
             _int_field('_pad0C',   12,  4),
             _int_field('_size',    16,  4),
             _int_field('_pad14',   20,  4),
-            _f('_allocator',       24,  8, 'ptr'),
+            _f('_allocator',       24,  8, 'ptr:struct:RE::ScrapHeap'),
         ]
 
     m = _re.fullmatch(r'BSTSmallArrayHeapAllocator<(\d+)>', alloc)
@@ -332,7 +351,7 @@ def _rule_bstscattertable(outer, args):
             _int_field('_free',     16, 4),
             _int_field('_good',     20, 4),
             _f('_sentinel',         24, 8, 'ptr'),
-            _f('_allocator',        32, 8, 'ptr'),  # ScrapHeap*
+            _f('_allocator',        32, 8, 'ptr:struct:RE::ScrapHeap'),
             _f('_entries',          40, 8, 'ptr'),  # byte*
         ]
     return 0, []
@@ -417,9 +436,10 @@ def _rule_nitilistitem(outer, args, known_sizes=None):
     data_off = 16
     sz = (data_off + elem_sz + 7) & ~7
     data_type = _elem_type_for(args[0], known_sizes) or 'bytes:{}'.format(elem_sz)
+    node_type = _ptr_type_for('NiTListItem<{}>'.format(args[0]))
     return sz, [
-        _f('_prev', 0,        8, 'ptr'),
-        _f('_next', 8,        8, 'ptr'),
+        _f('_prev', 0,        8, node_type),
+        _f('_next', 8,        8, node_type),
         _f('_data', data_off, elem_sz, data_type),
     ]
 
@@ -647,10 +667,7 @@ def _rule_bsfixedstring(outer, args, known_sizes=None):
     if outer not in ('BSFixedString', 'detail::BSFixedString') or not args:
         return 0, []
     char_t = args[0].strip()
-    if 'wchar' in char_t:
-        ptr_type = 'ptr'
-    else:
-        ptr_type = 'ptr'   # no wchar_t struct in Ghidra; both variants use ptr
+    ptr_type = 'ptr:i16' if 'wchar' in char_t else 'ptr:i8'
     return 8, [_f('_data', 0, 8, ptr_type)]
 
 
@@ -684,8 +701,10 @@ def _rule_bsstringt(outer, args, known_sizes=None):
     """BSStringT<CharT, N, Policy> — _data:char*@0, _size:u16@8, _capacity:u16@10, _pad:u32@12 = 16."""
     if outer != 'BSStringT' or not args:
         return 0, []
+    char_t = args[0].strip()
+    data_ptr = 'ptr:i16' if 'wchar' in char_t else 'ptr:i8'
     return 16, [
-        _f('_data',              0,  8, 'ptr'),
+        _f('_data',              0,  8, data_ptr),
         _int_field('_size',      8,  2),
         _int_field('_capacity', 10,  2),
         _int_field('_pad0C',    12,  4),
@@ -713,7 +732,7 @@ def _rule_avs_localmap(outer, args, known_sizes=None):
         return 0, []
     entries_type = _ptr_type_for(args[0])
     return 16, [
-        _f('actorValues', 0, 8, 'ptr'),
+        _f('actorValues', 0, 8, 'struct:RE::detail::BSFixedString<char>'),
         _f('entries',     8, 8, entries_type),
     ]
 

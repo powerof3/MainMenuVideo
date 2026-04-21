@@ -483,6 +483,15 @@ def _pdb_fuzzy_lookup(orig, pdb_types):
 
 from template_structural_rules import structural_rule as _structural_rule
 
+# ---------------------------------------------------------------------------
+# Template layout mode (set by --template-mode CLI flag, default='rules')
+# ---------------------------------------------------------------------------
+# 'rules'    — hand-written template_structural_rules.py (default, fast)
+# 'libclang' — clang_template_layouts.py via libclang Python bindings
+# 'clangd'   — clangd_template_layouts.py via clang.exe subprocess
+# 'compare'  — run all three and report differences (does NOT change output)
+_TEMPLATE_MODE: str = 'rules'
+
 
 def _find_msdia_dll():
     """Locate msdia140.dll — checks VS, PIX, and the registry CLSID path."""
@@ -1257,6 +1266,9 @@ def resolve_type(type_str):
         name = type_str[9:]
         inner = created.get(name) or created.get(name.split('::')[-1])
         return dtm.getPointer(inner, 8) if inner else _PTR
+    if type_str.startswith('ptr:'):
+        inner = get_builtin(type_str[4:]) or resolve_type(type_str[4:])
+        if inner: return dtm.getPointer(inner, 8)
     if type_str.startswith('ptr'): return _PTR
     if type_str.startswith('bytes:'):
         n = int(type_str[6:])
@@ -3172,6 +3184,45 @@ def run_version(version, symbols_json, fallback_symbols_json='[]'):
                 collected[foff] = (fname, foff, ftype)
             return sorted(collected.values(), key=lambda x: x[1])
 
+        # Pre-compute clang/clangd layouts for all template instantiations when needed.
+        _tmpl_clang_layouts: dict = {}
+        _tmpl_clangd_layouts: dict = {}
+        if _TEMPLATE_MODE in ('libclang', 'compare'):
+            try:
+                from clang_template_layouts import extract_layouts as _clang_extract
+                _all_orig_names = [_norm_tmpl(o) for o in _tmpl.template_map]
+                print('  [libclang] Extracting layouts for {} template types...'.format(
+                    len(_all_orig_names)))
+                _tmpl_clang_layouts = _clang_extract(
+                    _all_orig_names, parse_args, SKYRIM_H, _map_type)
+                _ok = sum(1 for sz, _ in _tmpl_clang_layouts.values() if sz > 0)
+                print('  [libclang] Resolved {}/{} types'.format(
+                    _ok, len(_all_orig_names)))
+            except Exception as _e:
+                print('  [libclang] ERROR:', _e)
+        if _TEMPLATE_MODE in ('clangd', 'compare'):
+            try:
+                from clangd_template_layouts import (
+                    extract_layouts as _clangd_extract,
+                    find_clang_binary as _find_clang,
+                )
+                _clang_bin = _find_clang()
+                if _clang_bin:
+                    _all_orig_names = [_norm_tmpl(o) for o in _tmpl.template_map]
+                    print('  [clangd] Extracting layouts for {} template types '
+                          'using {}...'.format(len(_all_orig_names),
+                                               os.path.basename(_clang_bin)))
+                    _tmpl_clangd_layouts = _clangd_extract(
+                        _all_orig_names, parse_args, SKYRIM_H,
+                        clang_binary=_clang_bin)
+                    _ok = sum(1 for sz, _ in _tmpl_clangd_layouts.values() if sz > 0)
+                    print('  [clangd] Resolved {}/{} types'.format(
+                        _ok, len(_all_orig_names)))
+                else:
+                    print('  [clangd] ERROR: clang binary not found')
+            except Exception as _e:
+                print('  [clangd] ERROR:', _e)
+
         for _orig, _display in _tmpl.template_map.items():
             if _display not in structs and _display not in enums:
                 _sz = 0
@@ -3202,23 +3253,55 @@ def run_version(version, symbols_json, fallback_symbols_json='[]'):
                 # or as sole source when PDB lookup failed entirely.
                 _known_sz = {k: v['size'] for k, v in structs.items() if v.get('size', 0) > 0}
                 _known_sz.update({k: v.get('size', 0) for k, v in enums.items() if v.get('size', 0) > 0})
+
+                # --- Template layout source dispatch ---
                 _rule_sz, _rule_fields = _structural_rule(_orig_n, _known_sz)
-                if _rule_sz:
+                # For libclang/clangd/compare modes, look up pre-computed layouts
+                _clang_sz,  _clang_fields  = _tmpl_clang_layouts.get(_orig_n, (0, []))
+                _clangd_sz, _clangd_fields = _tmpl_clangd_layouts.get(_orig_n, (0, []))
+
+                if _TEMPLATE_MODE == 'libclang' and _clang_sz:
+                    _alt_sz, _alt_fields = _clang_sz, _clang_fields
+                elif _TEMPLATE_MODE == 'clangd' and _clangd_sz:
+                    _alt_sz, _alt_fields = _clangd_sz, _clangd_fields
+                elif _TEMPLATE_MODE == 'compare':
+                    # In compare mode use rules output, but pre-computed layouts
+                    # were already collected for the comparison report below.
+                    _alt_sz, _alt_fields = _rule_sz, _rule_fields
+                else:
+                    _alt_sz, _alt_fields = _rule_sz, _rule_fields
+
+                if _alt_sz:
                     if not _sz:
-                        _sz, _fields = _rule_sz, _rule_fields
-                    elif _rule_sz == _sz:
-                        _fields = _rule_fields
+                        _sz, _fields = _alt_sz, _alt_fields
+                    elif _alt_sz == _sz:
+                        _fields = _alt_fields
                 structs[_display] = {'name': _display, 'full_name': _display, 'size': _sz,
                                      'category': category, 'fields': _fields, 'bases': [],
                                      'has_vtable': False}
         if _tmpl.template_map:
             print('Discovered {} template instantiation aliases'.format(len(_tmpl.template_map)))
+
+        # Emit comparison report if requested
+        if _TEMPLATE_MODE == 'compare' and _tmpl.template_map:
+            from clangd_template_layouts import compare_layouts, print_comparison
+            _rules_for_cmp  = {_norm_tmpl(o): _structural_rule(_norm_tmpl(o), {})
+                               for o in _tmpl.template_map}
+            _cmp_report = compare_layouts(
+                {n: v for n, v in _rules_for_cmp.items()},
+                _tmpl_clang_layouts,
+                _tmpl_clangd_layouts,
+                names=list(_tmpl_clang_layouts.keys()),
+            )
+            print_comparison(_cmp_report)
+
     except ImportError:
         template_source = ''
 
     # Apply structural rules to all template structs from PDB that still have untyped fields.
     # This upgrades bytes:/ptr fields in concrete template types (e.g. NiTMap, BSTSmallSharedArray)
     # that were parsed from the PDB but had incomplete type information.
+    # In libclang/clangd modes, also apply the clang-derived layouts as an upgrade pass.
     _upgraded = _upgrade_template_struct_fields(structs, enums)
     if _upgraded:
         print('Structural-rule upgrade: {} template structs improved'.format(_upgraded))
@@ -3230,6 +3313,26 @@ def run_version(version, symbols_json, fallback_symbols_json='[]'):
 
 def main():
     import json as _json
+    import argparse
+
+    global _TEMPLATE_MODE
+    ap = argparse.ArgumentParser(description='Parse CommonLibSSE and generate Ghidra import script')
+    ap.add_argument(
+        '--template-mode',
+        choices=['rules', 'libclang', 'clangd', 'compare'],
+        default='rules',
+        help=(
+            'Template struct layout source. '
+            '"rules" uses template_structural_rules.py (fast, default); '
+            '"libclang" uses the Python libclang bindings for full compiler parsing; '
+            '"clangd" uses clang.exe -fdump-record-layouts via subprocess; '
+            '"compare" runs all three and prints a comparison (output unchanged).'
+        ),
+    )
+    args = ap.parse_args()
+    _TEMPLATE_MODE = args.template_mode
+    if _TEMPLATE_MODE != 'rules':
+        print(f'Template mode: {_TEMPLATE_MODE}')
 
     # Load address databases (binary data, not source scanning)
     addr_lib = AddressLibrary()
