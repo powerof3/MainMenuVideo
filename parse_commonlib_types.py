@@ -500,6 +500,7 @@ def convert_sig_to_ghidra(sig, func_name):
         t = re.sub(r'\\bseconds\\b', 'longlong', t)
         t = re.sub(r'\\bErrorCode\\b', 'uint', t)
         t = re.sub(r'\\bmbstate_t\\b', 'void', t)
+        t = re.sub(r'\\bva_list\\b', 'void *', t)
         t = re.sub(r'\\bchar16_t\\b', 'ushort', t)
         t = re.sub(r'\\bchar32_t\\b', 'uint', t)
         t = re.sub(r'\\bwchar_t\\b', 'ushort', t)
