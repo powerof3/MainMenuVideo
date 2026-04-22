@@ -551,11 +551,30 @@ def _lookup_by_qualname(target: str, dct: Dict[str, dict]) -> Optional[str]:
 # High-level API — drop-in replacement for clang_ast_collect.collect_types
 # ---------------------------------------------------------------------------
 
+def _write_compile_commands(
+    skyrim_h: str, parse_args: List[str], root_dir: str
+) -> str:
+    """Write a compile_commands.json for ccle-re at the project root."""
+    import json as _json
+
+    cmd_parts = ["clang++"] + parse_args + ["-c", skyrim_h.replace("\\", "/")]
+    cc = [{
+        "directory": root_dir.replace("\\", "/"),
+        "command": " ".join(cmd_parts),
+        "file": skyrim_h.replace("\\", "/"),
+    }]
+    cc_path = os.path.join(root_dir, "compile_commands.json")
+    with open(cc_path, "w") as f:
+        _json.dump(cc, f, indent=2)
+    return cc_path
+
+
 def collect_types(
     skyrim_h: str,
     parse_args: List[str],
     re_include: str,
     verbose: bool = False,
+    index_wait: float = 60.0,
 ) -> Tuple[dict, dict]:
     """Drop-in replacement for clang_ast_collect.collect_types().
 
@@ -569,6 +588,8 @@ def collect_types(
     Uses ccle-re's $ccle/dumpTypes extension instead of spawning multiple
     clang.exe JSON AST + record layout passes.
     """
+    import time as _time
+
     binary = find_ccle_binary()
     if not binary:
         raise RuntimeError(
@@ -578,59 +599,52 @@ def collect_types(
 
     _ENUM_NAMES.clear()
 
-    # Derive the project root (CommonLibSSE include dir's parent)
-    root_dir = os.path.dirname(os.path.dirname(re_include))
+    root_dir = os.path.dirname(re_include)
     root_uri = _path_to_uri(root_dir)
 
     if verbose:
         print(f"  [ccle-re] launching {binary}")
         print(f"  [ccle-re] root: {root_dir}")
 
-    # TODO: ccle-re may need compile_commands.json or a .ccls file in the
-    # root for proper indexing.  parse_args contains the -I/-D/-std flags
-    # that would normally go there.  For now we assume the project is already
-    # configured.  If not, we could write a temporary compile_commands.json.
+    cc_path = _write_compile_commands(skyrim_h, parse_args, root_dir)
+    cc_cleanup = True
 
-    client = LspClient(binary, timeout=300.0)
     try:
-        client.initialize(root_uri)
+        client = LspClient(binary, timeout=300.0)
+        try:
+            client.initialize(root_uri, index_threads=4)
 
-        # Open Skyrim.h so ccle-re indexes the full TU
-        with open(skyrim_h, "r", encoding="utf-8", errors="replace") as f:
-            skyrim_text = f.read()
-        client.did_open(_path_to_uri(skyrim_h), skyrim_text)
+            if verbose:
+                print(f"  [ccle-re] waiting {index_wait:.0f}s for indexing...")
+            _time.sleep(index_wait)
 
-        # TODO: ccle-re may need time to index the TU before $ccle/dumpTypes
-        # returns complete results.  The fork should either block until
-        # indexing is complete or we need to wait for a $/progress notification
-        # indicating readiness.  For now we assume the request blocks until
-        # the index is ready.
+            if verbose:
+                print("  [ccle-re] requesting $ccle/dumpTypes...")
 
-        if verbose:
-            print("  [ccle-re] requesting $ccle/dumpTypes...")
+            response = client.ccle_dump_types(
+                namespaces=["RE", "REX", "REL"],
+                include_prefix=re_include.replace("\\", "/"),
+            )
 
-        # Normalize re_include to forward slashes for the includePrefix filter
-        include_prefix = re_include.replace("\\", "/")
+            raw_enums = response.get("enums", [])
+            raw_records = response.get("records", [])
+            raw_typedefs = response.get("typedefs", [])
 
-        response = client.ccle_dump_types(
-            namespaces=["RE", "REX", "REL"],
-            include_prefix=include_prefix,
-        )
+            enums = _convert_enums(raw_enums)
+            structs = _convert_records(raw_records)
+            _convert_typedefs(raw_typedefs, enums, structs)
 
-        # Convert response to pipeline dicts
-        raw_enums = response.get("enums", [])
-        raw_records = response.get("records", [])
-        raw_typedefs = response.get("typedefs", [])
+            if verbose:
+                print(f"  [ccle-re] collected {len(enums)} enums, {len(structs)} structs")
 
-        enums = _convert_enums(raw_enums)
-        structs = _convert_records(raw_records)
-        _convert_typedefs(raw_typedefs, enums, structs)
-
-        if verbose:
-            print(f"  [ccle-re] collected {len(enums)} enums, {len(structs)} structs")
-
+        finally:
+            client.close()
     finally:
-        client.close()
+        if cc_cleanup:
+            try:
+                os.remove(cc_path)
+            except OSError:
+                pass
 
     return enums, structs
 
