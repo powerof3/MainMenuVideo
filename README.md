@@ -31,7 +31,8 @@ GhidraImportScripts/
 ├── ghidrascripts/
 │   ├── CommonLibImport_SE.py   Generated: import SE types + vtables + symbols
 │   └── CommonLibImport_AE.py   Generated: import AE types + vtables + symbols
-├── parse_commonlib_types.py    Generator for CommonLibImport_SE/AE.py
+├── parse_commonlib_types.py    CommonLibSSE-specific orchestrator
+├── ghidra_import_gen.py        Generic Ghidra import script generator
 ├── ccle_client.py              LSP client for ccls-re type extraction
 ├── reloc_parser.py             Regex-based relocation/symbol scanner
 ├── template_types.py           C++ template instantiation handling
@@ -161,7 +162,8 @@ Address libraries   ──┘
 
 CommonLibSSE headers ─── ccls-re ──► types, enums, vtable slots, method signatures
 
-parse_commonlib_types.py merges both ──► CommonLibImport_SE.py / AE.py
+parse_commonlib_types.py ─── merges both ──┐
+ghidra_import_gen.py ─── generates script ─┴─► CommonLibImport_SE.py / AE.py
 ```
 
 **Symbol sources** (in priority order):
@@ -184,8 +186,9 @@ parse_commonlib_types.py merges both ──► CommonLibImport_SE.py / AE.py
 
 ### `parse_commonlib_types.py`
 
-Main generator. Coordinates ccls-re for types and reloc_parser for symbols,
-then emits the Ghidra import scripts.
+CommonLibSSE-specific orchestrator. Coordinates ccls-re for types, reloc_parser
+for symbols, loads address libraries / PDB / AE rename DB, and calls
+`ghidra_import_gen` to emit the Ghidra import scripts.
 
 | Input | Purpose |
 |-------|---------|
@@ -194,6 +197,14 @@ then emits the Ghidra import scripts.
 | `addresslibrary/` | SE and AE offset databases |
 | `extern/AddressLibraryDatabase/skyrimae.rename` | AE fallback symbol names |
 | `extras/SkyrimSE.pdb` | SE fallback symbol names |
+
+### `ghidra_import_gen.py`
+
+Generic Ghidra import script generator. Game-agnostic — takes processed type
+data (enums, structs, vtable info) and symbol tables, then generates a
+self-contained Jython script for Ghidra. Provides vtable hierarchy building,
+struct inheritance flattening, template layout application, and the full Ghidra
+runtime code (type creation, symbol application, vtable walking).
 
 ### `ccle_client.py`
 
