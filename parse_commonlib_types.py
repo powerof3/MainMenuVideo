@@ -10,7 +10,7 @@ Requires: clang.exe reachable via PATH / registry / common install paths.
 Pipeline (all via clang subprocess — no Python libclang bindings needed):
   Types:        clang_ast_collect.collect_types
   Relocations:  clang_ast_reloc.collect_relocations / collect_src_relocations
-  Templates:    template_structural_rules (default) OR clangd_template_layouts
+  Templates:    clangd_template_layouts via clang.exe -fdump-record-layouts
 """
 
 import os
@@ -30,7 +30,6 @@ COMMONLIB_INCLUDE = os.path.join(SCRIPT_DIR, 'extern', 'CommonLibSSE', 'include'
 SKYRIM_H = os.path.join(COMMONLIB_INCLUDE, 'RE', 'Skyrim.h')
 RE_INCLUDE = os.path.join(COMMONLIB_INCLUDE, 'RE')
 OUTPUT_DIR = os.path.join(SCRIPT_DIR, 'ghidrascripts')
-EXTRA_TYPES_JSON = os.path.join(SCRIPT_DIR, 'extra_types.json')
 
 
 # ---------------------------------------------------------------------------
@@ -215,18 +214,136 @@ def load_ae_rename_db(file_path, ae_db):
     return result
 
 
-def _load_extra_types():
-    """Load extra_types.json. Returns dict with keys typedefs/enums/opaques."""
-    import json as _json
-    if not os.path.isfile(EXTRA_TYPES_JSON):
-        return {'typedefs': {}, 'enums': {}, 'opaques': {}}
-    with open(EXTRA_TYPES_JSON, 'r', encoding='utf-8') as _f:
-        data = _json.load(_f)
-    return {
-        'typedefs': data.get('typedefs', {}),
-        'enums':    data.get('enums', {}),
-        'opaques':  data.get('opaques', {}),
-    }
+# ---------------------------------------------------------------------------
+# Extra types supplementing clang's output
+# ---------------------------------------------------------------------------
+# - typedefs: clang now emits these as empty size-only shells (via TypedefDecl
+#             walking in clang_ast_collect), but build_c_prelude() still needs
+#             `typedef unsigned int FormID;` style lines for Ghidra's CParser —
+#             empty struct shells don't teach CParser the underlying integer type.
+# - enums:    stale fallbacks — clang finds these already; the `if name not in
+#             enums` guard below skips almost all of them.
+# - opaques:  genuine externals — forward-declared types whose real definitions
+#             live in Havok/Gamebryo/Windows SDKs clang never sees. We do NOT
+#             auto-emit shells from forward-decls (friend-decl inside class body
+#             collides with the real type's qualified name).
+
+_EXTRA_TYPEDEFS = {
+    'FormID':          {'base': 'u32'},
+    'ObjectRefHandle': {'base': 'u32'},
+    'ActorHandle':     {'base': 'u32'},
+    'RefHandle':       {'base': 'u32'},
+    'VMHandle':        {'base': 'u64'},
+    'UPInt':           {'base': 'u64'},
+    'hkpShapeKey':     {'base': 'u32'},
+    'va_list':         {'base': 'u64'},
+    'char16_t':        {'base': 'u16'},
+}
+
+_EXTRA_ENUMS = {
+    'EffectArchetype': {
+        'size': 4,
+        'values': {
+            'kNone': -1, 'kValueModifier': 0, 'kScript': 1, 'kDispel': 2,
+            'kCureDisease': 3, 'kAbsorb': 4, 'kDualValueModifier': 5,
+            'kCalm': 6, 'kDemoralize': 7, 'kFrenzy': 8, 'kDisarm': 9,
+            'kCommandSummoned': 10, 'kInvisibility': 11, 'kLight': 12,
+            'kDarkness': 13, 'kNightEye': 14, 'kLock': 15, 'kOpen': 16,
+            'kBoundWeapon': 17, 'kSummonCreature': 18, 'kDetectLife': 19,
+            'kTelekinesis': 20, 'kParalysis': 21, 'kReanimate': 22,
+            'kSoulTrap': 23, 'kTurnUndead': 24, 'kGuide': 25,
+            'kWerewolfFeed': 26, 'kCureParalysis': 27, 'kCureAddiction': 28,
+            'kCurePoison': 29, 'kConcussion': 30, 'kValueAndParts': 31,
+            'kAccumulateMagnitude': 32, 'kStagger': 33, 'kPeakValueModifier': 34,
+            'kCloak': 35, 'kWerewolf': 36, 'kSlowTime': 37, 'kRally': 38,
+            'kEnhanceWeapon': 39, 'kSpawnHazard': 40, 'kEtherealize': 41,
+            'kBanish': 42, 'kSpawnScriptedRef': 43, 'kDisguise': 44,
+            'kGrabActor': 45, 'kVampireLord': 46,
+        },
+    },
+    'InputContextID': {
+        'size': 4,
+        'values': {
+            'kGameplay': 0, 'kMenuMode': 1, 'kConsole': 2, 'kItemMenu': 3,
+            'kInventory': 4, 'kDebugText': 5, 'kFavorites': 6, 'kMap': 7,
+            'kStats': 8, 'kCursor': 9, 'kBook': 10, 'kDebugOverlay': 11,
+            'kJournal': 12, 'kTFCMode': 13, 'kMapDebug': 14, 'kLockpicking': 15,
+            'kFavor': 16, 'kTotal': 17, 'kNone': 18,
+        },
+    },
+    'ITEM_REMOVE_REASON': {
+        'size': 4,
+        'values': {
+            'kRemove': 0, 'kSteal': 1, 'kSelling': 2,
+            'kDropping': 3, 'kStoreInContainer': 4, 'kStoreInTeammate': 5,
+        },
+    },
+    'REGION_DATA_ID':       {'size': 4, 'values': {}},
+    'MATERIAL_ID':          {'size': 4, 'values': {}},
+    'LoadConstants':        {'size': 4, 'values': {}},
+    'SpellType':            {'size': 4, 'values': {}},
+    'CastingSource':        {'size': 4, 'values': {}},
+    'CannotCastReason':     {'size': 4, 'values': {}},
+    'ActorValue':           {'size': 4, 'values': {}},
+    'DEFAULT_OBJECT':       {'size': 4, 'values': {}},
+    'SOUND_LEVEL':          {'size': 4, 'values': {}},
+    'ErrorCode':            {'size': 4, 'values': {}},
+    'ACTOR_LOS_LOCATION':   {'size': 4, 'values': {}},
+    'ACTOR_VALUE_MODIFIER': {'size': 4, 'values': {}},
+    'FormType':             {'size': 1, 'values': {}},
+    'UI_MESSAGE_TYPE':      {'size': 4, 'values': {}},
+}
+
+_EXTRA_OPAQUES = [
+    'BSFixedString', 'TintMask', 'IAIWorldLocation', 'AIWorldLocationContext',
+    'IDebugText', 'NiVisibleArray', 'TrespassPackage',
+    'CombatProjectileAimController', 'BSPathingStreamWrite', 'BSPathingStreamRead',
+    'hkStatisticsCollector', 'hkaChunkCache', 'hkClass',
+    'hkpShapeRayCastInput', 'hkpShapeRayCastOutput',
+    'hkpShapeRayBundleCastInput', 'hkpShapeRayBundleCastOutput',
+    'hkpShapeModifier', 'hkpCdBodyPairCollector', 'hkpCollisionInput',
+    'hkpSimpleConstraintContactMgr', 'hkAabbUint32', 'hkbContext',
+    'hkbClipGenerator', 'BSSynchronizedClipGenerator',
+    'CollisionEntry', 'CheckTargetArgs', 'IUIMessageData',
+    'GFxMovieDef', 'GFxValue', 'ObjectInterface',
+    'RendererInitOSData', 'ApplicationWindowProperties', 'SourceActionMap',
+    'IFunctionArguments', 'ISendEventFilter',
+    'TrapData', 'TrapEntry', 'TargetEntry',
+    'Location', 'ArgsType',
+    'hkpCharacterRigidBody', 'hkpCharacterRigidBodyListener',
+    'HWND', 'NiAVObject', 'NiPoint3', 'NiColorA',
+    'BSRenderPass', 'BSShaderProperty', 'BSLight', 'BSGeometry', 'BSShader',
+    'BSAnimNoteReceiver', 'BShkbAnimationGraph', 'IAnimationGraphManagerHolder',
+    'BGSSoundDescriptorForm', 'BGSDecalNode', 'BSDynamicTriShape',
+    'BGSImpactManager', 'BGSImpactDataSet', 'BGSNumericIDIndex',
+    'BGSSaveLoadGame', 'BGSPrimitive',
+    'TESHavokUtilities', 'TESRegionData', 'TESRegionDataGrass',
+    'TESRegionDataObjects', 'TESRegionDataManager', 'TESIdleForm',
+    'ExtraDataList', 'InventoryEntryData', 'MagicItem', 'MagicCaster',
+    'MagicSystem', 'MagicUtilities', 'Effect', 'ActiveEffectFactory',
+    'AIFormulas', 'HitData', 'MovementMessageActorCollision',
+    'ActorMotionFeedbackOutput', 'ControlMap', 'BSGamepadDevice',
+    'SkyrimVM', 'ConsoleLog', 'LooseFileStream',
+    'AnimationFileManagerSingleton', 'SendHUDMessage', 'SendUIMessage',
+    'PackageLocation', 'NiDefaultAVObjectPalette', 'BSScaleformExternalTexture',
+    'hkpCollidable', 'hkVector4', 'hkVector4Comparison',
+    'hkMoppBvTreeShapeBase', 'hkpBoxShape', 'hkpCapsuleShape',
+    'hkpCompressedMeshShape', 'hkpConvexVerticesShape', 'hkpListShape',
+    'hkpMoppBvTreeShape', 'hkpSphereShape', 'hkpRigidBody',
+    'bhkRigidBody', 'bhkShape', 'CFilter', 'Result',
+    'hkpCdBody', 'hkpRayHitCollector', 'hkpSphere', 'hkSphere',
+    'hkp3AxisSweep', 'hkpBroadPhaseHandle', 'hkpCachingShapePhantom',
+    'hkpWorld', 'hkpEntity', 'hkpPhantom', 'hkpSimulationIsland',
+    'hkpWorldObject', 'ahkpCharacterProxy', 'ahkpWorld',
+    'bhkCharacterStateClimbing', 'hkbBehaviorGraph', 'hkbStateMachine',
+    'hkQsTransform', 'hkaAnimation', 'hkaAnimationControl',
+    'hkaDefaultAnimationControl',
+    'NiCamera', 'NiMatrix3', 'BSCullingProcess', 'BSParabolicCullingProcess',
+    'NiBackToFrontAccumulator', 'BSString', 'BSStream',
+    'ObjectBindPolicy', 'ProjectileHandle', 'LaunchData',
+    'BSSoundHandle', 'TESFile', 'TESDescription',
+    'TaskQueueInterface', 'SpellItem', 'BSPathingRequest',
+]
 
 
 _BASE_TO_C = {
@@ -237,20 +354,20 @@ _BASE_TO_C = {
 }
 
 
-def build_c_prelude(extra):
-    """Build a C declaration prelude from extra_types data for CParserUtils."""
+def build_c_prelude():
+    """Build a C declaration prelude from the extra-type tables for CParserUtils."""
     lines = []
-    for name, info in sorted(extra['typedefs'].items()):
+    for name, info in sorted(_EXTRA_TYPEDEFS.items()):
         c_base = _BASE_TO_C.get(info['base'], 'unsigned int')
         lines.append('typedef {} {};'.format(c_base, name))
-    for name, info in sorted(extra['enums'].items()):
+    for name, info in sorted(_EXTRA_ENUMS.items()):
         values = info.get('values', {})
         if values:
             body = ', '.join('{}={}'.format(k, v) for k, v in values.items())
             lines.append('enum {} {{ {} }};'.format(name, body))
         else:
             lines.append('typedef unsigned int {};'.format(name))
-    for name in sorted(extra['opaques']):
+    for name in sorted(_EXTRA_OPAQUES):
         lines.append('struct {};'.format(name))
         lines.append('typedef struct {} {};'.format(name, name))
     return '\n'.join(lines)
@@ -364,16 +481,6 @@ def _pdb_fuzzy_lookup(orig, pdb_types):
     # Same size — pick the one with fewest extra args, then shortest name
     candidates.sort(key=lambda kv: (len(_parse_tmpl(kv[0])[1]) - len(lc_a), len(kv[0])))
     return candidates[0]
-
-
-from template_structural_rules import structural_rule as _structural_rule
-
-# ---------------------------------------------------------------------------
-# Template layout mode (set by --template-mode CLI flag, default='rules')
-# ---------------------------------------------------------------------------
-# 'rules'  — hand-written template_structural_rules.py (default, fast)
-# 'clangd' — clangd_template_layouts.py via clang.exe -fdump-record-layouts
-_TEMPLATE_MODE: str = 'rules'
 
 
 def _find_msdia_dll():
@@ -1867,42 +1974,6 @@ def _pdb_fields_to_clang(pdb_fields, total_size, structs_by_short=None):
     return result
 
 
-def _upgrade_template_struct_fields(structs, enums):
-    """Apply structural rules to template structs that were populated from PDB but still have
-    untyped (bytes:/bare ptr) fields.  This handles concrete template instantiations like
-    NiTMap<K,V>, BSTSmallSharedArray<T>, detail::BSFixedString<char>, etc.
-    Returns the count of structs upgraded.
-
-    The struct keys here are the bare 'display' names (RE:: stripped from outer AND inner
-    template args).  The rule system propagates caller qualification into inner template
-    arg type strings — so we fully re-qualify the name before calling the rule to preserve
-    RE:: on inner args in the emitted field types.
-    """
-    from template_structural_rules import structural_rule as _rule
-    from clangd_template_layouts import _qualify_re
-    known_sz = {k: v['size'] for k, v in structs.items() if v.get('size', 0) > 0}
-    known_sz.update({k: v.get('size', 0) for k, v in enums.items() if v.get('size', 0) > 0})
-
-    count = 0
-    for st_name, st in structs.items():
-        if '<' not in st_name:
-            continue
-        fields = st.get('fields', [])
-        # Upgrade if there are unresolved fields worth improving — OR the struct is
-        # an empty template shell (no fields) where the rule provides a _pad filler.
-        has_untyped = any(
-            f['type'].startswith('bytes:') or f['type'] == 'ptr'
-            for f in fields
-        )
-        if fields and not has_untyped:
-            continue
-        rule_sz, rule_fields = _rule(_qualify_re(st_name), known_sz)
-        if rule_sz and rule_sz == st.get('size', 0) and rule_fields:
-            st['fields'] = rule_fields
-            count += 1
-    return count
-
-
 def _build_vtable_structs(structs):
     """
     Build vtable type descriptors for each virtual class by collecting intro
@@ -2147,28 +2218,30 @@ def run_version(version, symbols_json, fallback_symbols_json='[]'):
     _inject_vtable_fields(structs, vtable_structs)
     _flatten_structs(structs)
 
-    # Inject manually-defined extra types from extra_types.json
-    extra = _load_extra_types()
+    # Inject hand-authored extras (typedefs, stub enums, external opaques) not
+    # derivable from CommonLibSSE headers.  Each only fires when clang didn't
+    # already produce the type.
     category = '/CommonLibSSE/RE'
-    for name, info in extra['typedefs'].items():
+    _base_sz = {'u32': 4, 'i32': 4, 'u64': 8, 'i64': 8, 'u16': 2, 'i16': 2, 'u8': 1, 'i8': 1}
+    for name, info in _EXTRA_TYPEDEFS.items():
         if name not in enums and name not in structs:
-            # Register as a 0-field struct sized to match the base type
-            sz = {'u32': 4, 'i32': 4, 'u64': 8, 'i64': 8, 'u16': 2, 'i16': 2, 'u8': 1, 'i8': 1}.get(info['base'], 4)
-            structs[name] = {'name': name, 'full_name': name, 'size': sz,
+            structs[name] = {'name': name, 'full_name': name,
+                             'size': _base_sz.get(info['base'], 4),
                              'category': category, 'fields': [], 'bases': [],
                              'has_vtable': False}
-    for name, info in extra['enums'].items():
+    for name, info in _EXTRA_ENUMS.items():
         if name not in enums:
-            vals = [(k, v) for k, v in info.get('values', {}).items()]
-            enums[name] = {'name': name, 'full_name': name, 'size': info.get('size', 4),
+            vals = list(info.get('values', {}).items())
+            enums[name] = {'name': name, 'full_name': name,
+                           'size': info.get('size', 4),
                            'category': category, 'values': vals}
-    for name in extra['opaques']:
+    for name in _EXTRA_OPAQUES:
         if name not in structs and name not in enums:
             structs[name] = {'name': name, 'full_name': name, 'size': 0,
                              'category': category, 'fields': [], 'bases': [],
                              'has_vtable': False}
 
-    c_prelude = build_c_prelude(extra)
+    c_prelude = build_c_prelude()
 
     # Optional: scan for C++ template instantiation types and extend the prelude
     try:
@@ -2207,37 +2280,36 @@ def run_version(version, symbols_json, fallback_symbols_json='[]'):
                 collected[foff] = (fname, foff, ftype)
             return sorted(collected.values(), key=lambda x: x[1])
 
-        # Pre-compute clangd layouts for all template instantiations when requested.
+        # Pre-compute clangd layouts for all template instantiations.
         _tmpl_clangd_layouts: dict = {}
-        if _TEMPLATE_MODE == 'clangd':
-            try:
-                from clangd_template_layouts import (
-                    extract_layouts as _clangd_extract,
-                    find_clang_binary as _find_clang,
-                )
-                _clang_bin = _find_clang()
-                if _clang_bin:
-                    _all_orig_names = [_norm_tmpl(o) for o in _tmpl.template_map]
-                    print('  [clangd] Extracting layouts for {} template types '
-                          'using {}...'.format(len(_all_orig_names),
-                                               os.path.basename(_clang_bin)))
-                    _tmpl_clangd_layouts = _clangd_extract(
-                        _all_orig_names, parse_args, SKYRIM_H,
-                        clang_binary=_clang_bin)
-                    _ok = sum(1 for sz, _ in _tmpl_clangd_layouts.values() if sz > 0)
-                    print('  [clangd] Resolved {}/{} types'.format(
-                        _ok, len(_all_orig_names)))
-                else:
-                    print('  [clangd] ERROR: clang binary not found')
-            except Exception as _e:
-                print('  [clangd] ERROR:', _e)
+        try:
+            from clangd_template_layouts import (
+                extract_layouts as _clangd_extract,
+                find_clang_binary as _find_clang,
+            )
+            _clang_bin = _find_clang()
+            if _clang_bin:
+                _all_orig_names = [_norm_tmpl(o) for o in _tmpl.template_map]
+                print('  [clangd] Extracting layouts for {} template types '
+                      'using {}...'.format(len(_all_orig_names),
+                                           os.path.basename(_clang_bin)))
+                _tmpl_clangd_layouts = _clangd_extract(
+                    _all_orig_names, parse_args, SKYRIM_H,
+                    clang_binary=_clang_bin)
+                _ok = sum(1 for sz, _ in _tmpl_clangd_layouts.values() if sz > 0)
+                print('  [clangd] Resolved {}/{} types'.format(
+                    _ok, len(_all_orig_names)))
+            else:
+                print('  [clangd] ERROR: clang binary not found')
+        except Exception as _e:
+            print('  [clangd] ERROR:', _e)
 
         for _orig, _display in _tmpl.template_map.items():
             if _display not in structs and _display not in enums:
                 _sz = 0
                 _fields = []
                 # Look up the original template name in PDB types for size + fields.
-                # Normalise whitespace so DIA ("Type >") and libclang ("Type>,") keys match.
+                # Normalise whitespace so DIA ("Type >") and clang ("Type>,") keys match.
                 _orig_n = _norm_tmpl(_orig)
                 _orig_re = 'RE::' + _orig_n
                 pdb_entry = _pdb.get(_orig_n) or _pdb.get(_orig_re)
@@ -2253,23 +2325,13 @@ def run_version(version, symbols_json, fallback_symbols_json='[]'):
                         flat = _flatten_pdb_fields(_pdb_name, _pdb)
                         if flat:
                             _fields = _pdb_fields_to_clang(flat, _sz, _sbs)
-                # Structural rules provide typed pointer info that PDB lacks.
-                _known_sz = {k: v['size'] for k, v in structs.items() if v.get('size', 0) > 0}
-                _known_sz.update({k: v.get('size', 0) for k, v in enums.items() if v.get('size', 0) > 0})
 
-                _rule_sz, _rule_fields = _structural_rule(_orig_n, _known_sz)
                 _clangd_sz, _clangd_fields = _tmpl_clangd_layouts.get(_orig_n, (0, []))
-
-                if _TEMPLATE_MODE == 'clangd' and _clangd_sz:
-                    _alt_sz, _alt_fields = _clangd_sz, _clangd_fields
-                else:
-                    _alt_sz, _alt_fields = _rule_sz, _rule_fields
-
-                if _alt_sz:
+                if _clangd_sz:
                     if not _sz:
-                        _sz, _fields = _alt_sz, _alt_fields
-                    elif _alt_sz == _sz:
-                        _fields = _alt_fields
+                        _sz, _fields = _clangd_sz, _clangd_fields
+                    elif _clangd_sz == _sz:
+                        _fields = _clangd_fields
                 structs[_display] = {'name': _display, 'full_name': _display, 'size': _sz,
                                      'category': category, 'fields': _fields, 'bases': [],
                                      'has_vtable': False}
@@ -2278,13 +2340,6 @@ def run_version(version, symbols_json, fallback_symbols_json='[]'):
 
     except ImportError:
         template_source = ''
-
-    # Apply structural rules to all template structs from PDB that still have untyped fields.
-    # This upgrades bytes:/ptr fields in concrete template types (e.g. NiTMap, BSTSmallSharedArray)
-    # that were parsed from the PDB but had incomplete type information.
-    _upgraded = _upgrade_template_struct_fields(structs, enums)
-    if _upgraded:
-        print('Structural-rule upgrade: {} template structs improved'.format(_upgraded))
 
     print('Generating Ghidra script...')
     n_enums, n_structs = generate_script(enums, structs, vtable_structs, output_path, version, symbols_json, fallback_symbols_json, c_prelude, template_source)
@@ -2295,22 +2350,8 @@ def main():
     import json as _json
     import argparse
 
-    global _TEMPLATE_MODE
     ap = argparse.ArgumentParser(description='Parse CommonLibSSE and generate Ghidra import script')
-    ap.add_argument(
-        '--template-mode',
-        choices=['rules', 'clangd'],
-        default='rules',
-        help=(
-            'Template struct layout source. '
-            '"rules" uses template_structural_rules.py (fast, default); '
-            '"clangd" uses clang.exe -fdump-record-layouts via subprocess.'
-        ),
-    )
-    args = ap.parse_args()
-    _TEMPLATE_MODE = args.template_mode
-    if _TEMPLATE_MODE != 'rules':
-        print(f'Template mode: {_TEMPLATE_MODE}')
+    ap.parse_args()
 
     # Load address databases (binary data, not source scanning)
     addr_lib = AddressLibrary()

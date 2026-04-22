@@ -43,6 +43,22 @@ _ENUM_NAMES: set = set()
 # RE::NiSkinData::BoneData in NiSkinData.h).
 _NESTED_STRUCT_NAMES: Dict[str, set] = {}
 
+# Primitive/stdint name → byte size.  Shared by enum and typedef sizing.
+_PRIM_SIZES: Dict[str, int] = {
+    'bool': 1, 'char': 1, 'signed char': 1, 'unsigned char': 1,
+    'short': 2, 'unsigned short': 2, 'wchar_t': 2, 'char16_t': 2,
+    'int': 4, 'unsigned int': 4, 'long': 4, 'unsigned long': 4,
+    'char32_t': 4, 'float': 4,
+    'std::uint8_t': 1, 'std::int8_t': 1, 'uint8_t': 1, 'int8_t': 1,
+    'std::uint16_t': 2, 'std::int16_t': 2, 'uint16_t': 2, 'int16_t': 2,
+    'std::uint32_t': 4, 'std::int32_t': 4, 'uint32_t': 4, 'int32_t': 4,
+    'std::uint64_t': 8, 'std::int64_t': 8, 'uint64_t': 8, 'int64_t': 8,
+    'long long': 8, 'unsigned long long': 8, 'double': 8,
+    'size_t': 8, 'ptrdiff_t': 8, 'intptr_t': 8, 'uintptr_t': 8,
+    'std::size_t': 8, 'std::ptrdiff_t': 8,
+    'std::intptr_t': 8, 'std::uintptr_t': 8,
+}
+
 
 def _qualtype_to_pipeline(qual: str, enum_names: set) -> str:
     """Map a JSON AST `type.qualType` string to our pipeline descriptor.
@@ -188,20 +204,7 @@ def _collect_enum(node, full_name: str, ns_path: List[str],
     # e.g. `enum : UPInt` — qualType='UPInt', desugaredQualType='unsigned long long'.
     fut = node.get('fixedUnderlyingType', {}) or {}
     under = fut.get('desugaredQualType') or fut.get('qualType', 'int')
-    size_map = {
-        'bool': 1, 'char': 1, 'signed char': 1, 'unsigned char': 1,
-        'short': 2, 'unsigned short': 2, 'wchar_t': 2,
-        'int': 4, 'unsigned int': 4, 'long': 4, 'unsigned long': 4,
-        'std::uint8_t': 1, 'std::int8_t': 1, 'uint8_t': 1, 'int8_t': 1,
-        'std::uint16_t': 2, 'std::int16_t': 2, 'uint16_t': 2, 'int16_t': 2,
-        'std::uint32_t': 4, 'std::int32_t': 4, 'uint32_t': 4, 'int32_t': 4,
-        'std::uint64_t': 8, 'std::int64_t': 8, 'uint64_t': 8, 'int64_t': 8,
-        'long long': 8, 'unsigned long long': 8,
-        'size_t': 8, 'ptrdiff_t': 8, 'intptr_t': 8, 'uintptr_t': 8,
-        'std::size_t': 8, 'std::ptrdiff_t': 8,
-        'std::intptr_t': 8, 'std::uintptr_t': 8,
-    }
-    size = size_map.get(under.strip(), 4)
+    size = _PRIM_SIZES.get(under.strip(), 4)
 
     values: List[Tuple[str, int]] = []
     for child in node.get('inner', []) or []:
@@ -408,14 +411,55 @@ def _walk(node, ns_stack: List[str], re_dir: str,
                 _walk(c, ns_stack + [name], re_dir, enums, structs, pass_num, node_file)
         if pass_num == 1:
             return
-        if not node.get('completeDefinition'):
-            return
         full_name = '::'.join(ns_stack + [name]) if ns_stack else name
+        if not node.get('completeDefinition'):
+            # Forward decls are not tracked here.  Most RE-include forward decls
+            # are `friend class X;` / `friend struct X;` inside class bodies,
+            # where X refers to a type in the enclosing namespace — not a nested
+            # type of the current class.  Recording them at nested scope
+            # produces misleading qualified names (e.g. RE::Actor::BSLight vs
+            # the real RE::BSLight).  External opaques live in
+            # parse_commonlib_types._EXTRA_OPAQUES.
+            return
         if full_name in structs:
             return
         entry = _collect_struct(node, full_name, ns_stack, _ENUM_NAMES)
         if entry:
             structs[full_name] = entry
+        return
+
+    if kind in ('TypedefDecl', 'TypeAliasDecl'):
+        if not _in_re_include(node_file, re_dir):
+            return
+        name = node.get('name')
+        if not name:
+            return
+        if pass_num == 1:
+            return
+        full_name = '::'.join(ns_stack + [name]) if ns_stack else name
+        if full_name in structs or full_name in enums:
+            return
+        ty = node.get('type', {}) or {}
+        desugared = (ty.get('desugaredQualType') or ty.get('qualType') or '').strip()
+        if not desugared:
+            return
+        # Pointer types → 8 bytes.  Primitive/stdint → _PRIM_SIZES lookup.
+        # Anything else (struct/template instantiation) → skip; it'll come in
+        # via the record-layouts pass or template_types.
+        if desugared.endswith('*'):
+            size = 8
+        else:
+            stripped = re.sub(r'^(?:const|volatile)\s+', '', desugared)
+            stripped = re.sub(r'\s+(?:const|volatile)$', '', stripped).strip()
+            size = _PRIM_SIZES.get(stripped, 0)
+        if size <= 0:
+            return
+        category = '/CommonLibSSE/' + '/'.join(ns_stack) if ns_stack else '/CommonLibSSE'
+        structs[full_name] = {
+            'name': name, 'full_name': full_name, 'size': size,
+            'category': category, 'fields': [], 'bases': [],
+            'has_vtable': False,
+        }
         return
 
 
