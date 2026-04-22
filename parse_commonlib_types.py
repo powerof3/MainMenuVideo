@@ -4,7 +4,7 @@ Parse CommonLibSSE headers via clang.exe (-ast-dump=json + -fdump-record-layouts
 and generate a Ghidra import script (ghidrascripts/CommonLibTypes.py) that creates
 struct/class/enum type definitions.
 
-Run with: py -3.13 parse_commonlib_types.py
+Run with: py parse_commonlib_types.py
 Requires: clang.exe reachable via PATH / registry / common install paths.
 
 Pipeline (all via clang subprocess — no Python libclang bindings needed):
