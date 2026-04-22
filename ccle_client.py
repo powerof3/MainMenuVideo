@@ -454,14 +454,14 @@ def _convert_records(raw_records: List[dict]) -> Dict[str, dict]:
 
         has_vtable = r.get("hasVTable", False)
 
-        vmethods: Dict[str, dict] = {}
+        vmethods: Dict[str, Any] = {}
         vfuncs: List[Tuple[str, int]] = []
         for m in r.get("methods", []):
             mname = m.get("shortName", "")
             if not mname:
                 continue
-            if m.get("isVirtual"):
-                vmethods[mname] = {"pure": m.get("isPure", False)}
+            if m.get("isVirtual") and mname not in vmethods:
+                vmethods[mname] = (None, None)
                 vi = m.get("vtableIndex", -1)
                 if vi >= 0:
                     vfuncs.append((mname, vi * 8))
