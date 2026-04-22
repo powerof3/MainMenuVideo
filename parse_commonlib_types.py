@@ -1,22 +1,20 @@
 #!/usr/bin/env python3
 """
-Parse CommonLibSSE headers via clang.exe (-ast-dump=json + -fdump-record-layouts)
-and generate a Ghidra import script (ghidrascripts/CommonLibTypes.py) that creates
-struct/class/enum type definitions.
+Parse CommonLibSSE headers and generate Ghidra import scripts that create
+struct/class/enum type definitions with function symbols and relocations.
 
 Run with: py parse_commonlib_types.py
-Requires: clang.exe reachable via PATH / registry / common install paths.
+Requires: ccle-re (language server), clang.exe for relocation scanning.
 
-Pipeline (all via clang subprocess — no Python libclang bindings needed):
-  Types:        clang_ast_collect.collect_types
-  Relocations:  clang_ast_reloc.collect_relocations / collect_src_relocations
+Pipeline:
+  Types:        ccle_client via ccle-re $ccle/dumpTypes
+  Relocations:  clang_ast_reloc via clang.exe JSON AST
   Templates:    clangd_template_layouts via clang.exe -fdump-record-layouts
 """
 
 import os
 import sys
 import re
-import glob
 import struct
 import math
 import ctypes
@@ -217,26 +215,14 @@ def load_ae_rename_db(file_path, ae_db):
 VERSIONS = {
     'se': {
         'defines':     [],
-        'pdb':         os.path.join(SCRIPT_DIR, 'pdbs', 'GhidraImport_SE_D.pdb'),
         'output':      os.path.join(OUTPUT_DIR, 'CommonLibImport_SE.py'),
     },
     'ae': {
         'defines':     ['-DSKYRIM_AE', '-DSKYRIM_SUPPORT_AE'],
-        'pdb':         os.path.join(SCRIPT_DIR, 'pdbs', 'GhidraImport_AE_D.pdb'),
         'output':      os.path.join(OUTPUT_DIR, 'CommonLibImport_AE.py'),
     },
 }
 
-# ---------------------------------------------------------------------------
-# PDB parser — DIA SDK via COM (primary), manual TPI stream (fallback)
-# ---------------------------------------------------------------------------
-
-# SymTag and LocType constants from dia2.h
-_SymTagData      = 7
-_SymTagFunction  = 5
-_SymTagUDT       = 11
-_SymTagBaseClass = 18
-_LocIsThisRel    = 4
 
 _TMPL_WS_RE = re.compile(r'\s+(?=[>,])|(?<=[<,])\s+')
 
@@ -250,268 +236,6 @@ def _norm_tmpl(s):
     return _TMPL_WS_RE.sub('', s) if s else s
 
 
-def _parse_tmpl(name):
-    """Split 'Outer<A,B>' into ('Outer', ['A', 'B']).  Returns (name, []) for non-templates."""
-    lt = name.find('<')
-    if lt < 0 or not name.endswith('>'):
-        return name, []
-    outer = name[:lt]
-    inner = name[lt + 1:-1]
-    args, depth, start = [], 0, 0
-    for i, c in enumerate(inner):
-        if c == '<':
-            depth += 1
-        elif c == '>':
-            depth -= 1
-        elif c == ',' and depth == 0:
-            a = inner[start:i].strip()
-            if a:
-                args.append(a)
-            start = i + 1
-    a = inner[start:].strip()
-    if a:
-        args.append(a)
-    return outer, args
-
-
-def _tmpl_arg_fuzzy_eq(lc, pdb):
-    """True if lc matches pdb, tolerating a missing leading 'RE::' on lc and/or
-    trailing default template arguments present in pdb but absent in lc."""
-    if lc == pdb:
-        return True
-    if 'RE::' + lc == pdb:
-        return True
-    lc_o, lc_a = _parse_tmpl(lc)
-    pdb_o, pdb_a = _parse_tmpl(pdb)
-    if lc_o != pdb_o and 'RE::' + lc_o != pdb_o:
-        return False
-    if len(lc_a) > len(pdb_a):
-        return False
-    return all(_tmpl_arg_fuzzy_eq(la, pa) for la, pa in zip(lc_a, pdb_a))
-
-
-def _pdb_fuzzy_lookup(orig, pdb_types):
-    """Find a PDB type entry for orig using fuzzy template argument matching.
-
-    Accepts orig with missing 'RE::' on inner args and/or missing trailing
-    default args that the PDB expands.  When multiple candidates match,
-    picks the shortest PDB name (fewest extra defaults).
-
-    Returns (pdb_key, pdb_info) or (None, None).
-    """
-    lc_o, lc_a = _parse_tmpl(orig)
-    if not lc_a:
-        return None, None
-    prefix = lc_o + '<'
-    candidates = []
-    for k, v in pdb_types.items():
-        if not k.startswith(prefix):
-            continue
-        pdb_o, pdb_a = _parse_tmpl(k)
-        if len(lc_a) > len(pdb_a):
-            continue
-        if all(_tmpl_arg_fuzzy_eq(la, pa) for la, pa in zip(lc_a, pdb_a)):
-            candidates.append((k, v))
-    if not candidates:
-        return None, None
-    if len(candidates) == 1:
-        return candidates[0]
-    # Multiple candidates: only accept if all agree on size, otherwise ambiguous
-    sizes = {v['size'] for _, v in candidates}
-    if len(sizes) > 1:
-        return None, None
-    # Same size — pick the one with fewest extra args, then shortest name
-    candidates.sort(key=lambda kv: (len(_parse_tmpl(kv[0])[1]) - len(lc_a), len(kv[0])))
-    return candidates[0]
-
-
-def _find_msdia_dll():
-    """Locate msdia140.dll — checks VS, PIX, and the registry CLSID path."""
-    # Check registry first: DIA registers its DLL path under its CLSID
-    try:
-        import winreg
-        clsid = '{E6756135-1E65-4D17-8576-610761398C3C}'
-        key_path = r'CLSID\{}\InprocServer32'.format(clsid)
-        with winreg.OpenKey(winreg.HKEY_CLASSES_ROOT, key_path) as k:
-            path, _ = winreg.QueryValueEx(k, '')
-            if path and os.path.isfile(path):
-                return path
-    except OSError:
-        pass
-
-    # Glob common install locations (VS DIA SDK, PIX, WinSDK)
-    patterns = [
-        r'C:\Program Files\Microsoft Visual Studio\*\*\DIA SDK\bin\amd64\msdia140.dll',
-        r'C:\Program Files (x86)\Microsoft Visual Studio\*\*\DIA SDK\bin\amd64\msdia140.dll',
-        r'C:\Program Files\Microsoft Visual Studio\*\*\DIA SDK\bin\msdia140.dll',
-        r'C:\Program Files (x86)\Microsoft Visual Studio\*\*\DIA SDK\bin\msdia140.dll',
-        r'C:\Program Files\Microsoft PIX\*\msdia140.dll',
-        r'C:\Program Files (x86)\Microsoft PIX\*\msdia140.dll',
-    ]
-    for pattern in patterns:
-        matches = glob.glob(pattern)
-        if matches:
-            # Prefer amd64 / non-ARM builds
-            amd = [m for m in matches if 'arm' not in m.lower() and 'x86' not in m.lower()]
-            return (amd or matches)[0]
-    return None
-
-
-def _dia_iter(enum):
-    """Yield IDiaSymbol objects from an IDiaEnumSymbols one at a time."""
-    while True:
-        try:
-            result = enum.Next(1)
-        except Exception:
-            break
-        # comtypes maps Next(celt) → (rgelt, pceltFetched)
-        try:
-            syms, count = result
-        except (TypeError, ValueError):
-            break
-        if not count:
-            break
-        # rgelt is a single IDiaSymbol when celt=1
-        yield syms[0] if isinstance(syms, (list, tuple)) else syms
-
-
-def _load_pdb_types_dia(pdb_path):
-    """Read RE:: struct layouts from a PDB using the DIA SDK COM interface."""
-    import ctypes
-    import logging
-    import comtypes
-    import comtypes.client
-
-    msdia_path = _find_msdia_dll()
-    if not msdia_path:
-        raise RuntimeError('msdia140.dll not found in VS installation')
-
-    # Suppress "Generating comtypes.gen.*" noise
-    for log_name in ('comtypes.client._code_cache', 'comtypes.client._generate'):
-        logging.getLogger(log_name).setLevel(logging.WARNING)
-
-    dia = comtypes.client.GetModule(msdia_path)
-
-    # Create IDiaDataSource — try registered COM first, then DllGetClassObject
-    clsid = dia.DiaSource._reg_clsid_
-    iface = dia.IDiaDataSource
-    source = None
-
-    try:
-        source = comtypes.client.CreateObject(clsid, interface=iface)
-    except Exception:
-        pass
-
-    if source is None:
-        _dll = ctypes.WinDLL(msdia_path)
-        _dll.DllGetClassObject.restype = ctypes.HRESULT
-        IID_CF = comtypes.GUID('{00000001-0000-0000-C000-000000000046}')
-        cf_ptr = ctypes.c_void_p()
-        hr = _dll.DllGetClassObject(
-            ctypes.byref(clsid), ctypes.byref(IID_CF), ctypes.byref(cf_ptr)
-        )
-        if hr:
-            raise OSError('DllGetClassObject failed: {:#010x}'.format(hr & 0xFFFFFFFF))
-        # IClassFactory — define inline since comtypes doesn't expose it publicly
-        class IClassFactory(comtypes.IUnknown):
-            _iid_ = comtypes.GUID('{00000001-0000-0000-C000-000000000046}')
-            _methods_ = [
-                comtypes.COMMETHOD([], ctypes.HRESULT, 'CreateInstance',
-                    (['in'], ctypes.POINTER(comtypes.IUnknown), 'pUnkOuter'),
-                    (['in'], ctypes.POINTER(comtypes.GUID), 'riid'),
-                    (['out'], ctypes.POINTER(ctypes.c_void_p), 'ppvObject'),
-                ),
-                comtypes.COMMETHOD([], ctypes.HRESULT, 'LockServer',
-                    (['in'], ctypes.c_bool, 'fLock'),
-                ),
-            ]
-        # comtypes LP types proxy COM calls directly — no .contents needed
-        unk = ctypes.cast(cf_ptr, ctypes.POINTER(comtypes.IUnknown))
-        factory = unk.QueryInterface(IClassFactory)
-        ppv = factory.CreateInstance(None, ctypes.byref(iface._iid_))
-        source = ctypes.cast(ppv, ctypes.POINTER(iface))
-
-    source.loadDataFromPdb(pdb_path)
-    session = source.openSession()
-    scope = session.globalScope
-
-    result = {}
-
-    for sym in _dia_iter(scope.findChildren(_SymTagUDT, None, 0)):
-        try:
-            name = _norm_tmpl(sym.name)
-        except Exception:
-            continue
-        if not name or not name.startswith('RE::'):
-            continue
-        try:
-            size = sym.length
-        except Exception:
-            continue
-        if not size:
-            continue
-
-        fields = []
-        try:
-            for fsym in _dia_iter(sym.findChildren(_SymTagData, None, 0)):
-                try:
-                    if fsym.locationType == _LocIsThisRel:
-                        try:
-                            type_name = _norm_tmpl(fsym.type.name or '')
-                        except Exception:
-                            type_name = ''
-                        fields.append((fsym.name, fsym.offset, type_name))
-                except Exception:
-                    pass
-        except Exception:
-            pass
-
-        bases = []
-        try:
-            for bsym in _dia_iter(sym.findChildren(_SymTagBaseClass, None, 0)):
-                try:
-                    bases.append((_norm_tmpl(bsym.type.name), bsym.offset))
-                except Exception:
-                    pass
-        except Exception:
-            pass
-
-        vfuncs = []
-        _class_short = name.split('::')[-1]
-        try:
-            for fsym in _dia_iter(sym.findChildren(_SymTagFunction, None, 0)):
-                try:
-                    if fsym.intro and fsym.virtual:
-                        voff = fsym.virtualBaseOffset
-                        fname = fsym.name
-                        if fname == '__vecDelDtor':
-                            fname = '~' + _class_short
-                        if fname and '<' not in fname and 0 <= voff < 0x4000:
-                            vfuncs.append((fname, voff))
-                except Exception:
-                    pass
-        except Exception:
-            pass
-
-        if name not in result:
-            result[name] = {
-                'size': size,
-                'fields': fields,
-                'bases': bases,
-                'vfuncs': vfuncs,
-            }
-
-    return result
-
-
-def load_pdb_types(pdb_path):
-    """
-    Extract RE:: struct layouts from a PDB file using DIA SDK via COM.
-    Returns: { 'RE::StructName': { 'size', 'fields', 'bases', 'vfuncs' } }
-    """
-    if not os.path.isfile(pdb_path):
-        return {}
-    return _load_pdb_types_dia(pdb_path)
 
 # Third-party include directory for headers required by CommonLibSSE PCH
 # (binary_io, spdlog).  Without these, PCH.h triggers a fatal error that
@@ -560,8 +284,6 @@ else:
 # real <windows.h> and then #undefs every name that REX::W32 redeclares as a
 # constexpr variable.  This gives spdlog its Windows types while keeping the
 # REX::W32 namespace free of conflicting preprocessor macros.
-import re as _re
-
 _rex_w32_constexpr_names = []
 for _root, _dirs, _files in os.walk(os.path.join(COMMONLIB_INCLUDE, 'REX', 'W32')):
     for _fname in _files:
@@ -569,7 +291,7 @@ for _root, _dirs, _files in os.walk(os.path.join(COMMONLIB_INCLUDE, 'REX', 'W32'
             try:
                 with open(os.path.join(_root, _fname), encoding='utf-8', errors='replace') as _fh:
                     for _line in _fh:
-                        _m = _re.match(r'\s*inline\s+(?:constexpr\s+|const\s+)?auto\s+(\w+)', _line)
+                        _m = re.match(r'\s*inline\s+(?:constexpr\s+|const\s+)?auto\s+(\w+)', _line)
                         if _m:
                             _rex_w32_constexpr_names.append(_m.group(1))
             except OSError:
@@ -1590,226 +1312,8 @@ def generate_script(enums, structs, vtable_structs, output_path, version, symbol
 # Main
 # ---------------------------------------------------------------------------
 
-def _compute_vfuncs(structs):
-    """Derive vtable slot byte-offsets from the class hierarchy.
-
-    An 'intro virtual' is a virtual method declared in this class whose name
-    does not appear anywhere in the primary base's accumulated virtual method set.
-    Slots are assigned in declaration order starting after the primary base's
-    total slot count.
-
-    Stores st['vfuncs'] = [(method_name, byte_offset)] on qualifying structs.
-    The PDB merge step will override these with more precise compiled data when
-    the PDB is available.
-    """
-    slot_cache    = {}  # full_name → total vtable slot count
-    vmname_cache  = {}  # full_name → frozenset of all virtual method names (recursive)
-
-    def resolve(name):
-        return structs.get(name) or structs.get(name.split('::')[-1])
-
-    def all_vmethod_names(full_name, depth=0):
-        """All virtual method names visible in full_name's vtable (own + inherited)."""
-        if depth > 30:
-            return frozenset()
-        if full_name in vmname_cache:
-            return vmname_cache[full_name]
-        vmname_cache[full_name] = frozenset()  # cycle guard
-        st = structs.get(full_name)
-        if not st:
-            return frozenset()
-        result = set(st.get('vmethods', {}).keys())
-        for base_name in st.get('bases', []):
-            bs = resolve(base_name)
-            if bs:
-                result |= all_vmethod_names(bs['full_name'], depth + 1)
-            break  # primary base only (vtable chain is primary base chain)
-        frozen = frozenset(result)
-        vmname_cache[full_name] = frozen
-        return frozen
-
-    def total_slots(full_name, depth=0):
-        """Total vtable slots in full_name including all inherited intro virtuals."""
-        if depth > 30:
-            return 0
-        if full_name in slot_cache:
-            return slot_cache[full_name]
-        slot_cache[full_name] = 0  # cycle guard
-        st = structs.get(full_name)
-        if not st:
-            return 0
-        # Primary base contributes all its slots
-        base_count = 0
-        for base_name in st.get('bases', []):
-            bs = resolve(base_name)
-            if bs:
-                base_count = total_slots(bs['full_name'], depth + 1)
-            break
-        # Own intro virtuals = vmethods whose names are NOT in primary base's full set
-        primary_base_names = frozenset()
-        for base_name in st.get('bases', []):
-            bs = resolve(base_name)
-            if bs:
-                primary_base_names = all_vmethod_names(bs['full_name'])
-            break
-        own_intro = sum(1 for n in st.get('vmethods', {}) if n not in primary_base_names)
-        result = base_count + own_intro
-        slot_cache[full_name] = result
-        return result
-
-    count = 0
-    for st in structs.values():
-        if not st.get('has_vtable'):
-            continue
-        # Get primary base's accumulated vmethods and slot count
-        primary_base_names = frozenset()
-        base_start = 0
-        for base_name in st.get('bases', []):
-            bs = resolve(base_name)
-            if bs:
-                primary_base_names = all_vmethod_names(bs['full_name'])
-                base_start = total_slots(bs['full_name'])
-            break
-        # Intro virtuals in declaration order
-        intro = [n for n in st.get('vmethods', {}) if n not in primary_base_names]
-        if not intro:
-            continue
-        st['vfuncs'] = [(mname, (base_start + i) * 8) for i, mname in enumerate(intro)]
-        count += 1
-
-    print('Computed vtable slots for {} structs'.format(count))
 
 
-def _merge_pdb_into_structs(structs, pdb_types):
-    """
-    Cross-reference libclang struct data with PDB TPI data.
-    Also stores PDB base class offsets on each struct for later flattening.
-    """
-    matched = size_ok = size_mismatch = supplemented = 0
-
-    # Build short-name → struct entry map for field type inference in PDB-supplemented structs
-    structs_by_short = {}
-    for st in structs.values():
-        short = st['name']
-        if short not in structs_by_short or structs_by_short[short]['size'] > 1:
-            structs_by_short[short] = st
-
-    for pdb_name, pdb_info in pdb_types.items():
-        # Skip template types for struct cross-referencing — they're only used
-        # for enriching field type names, not for matching clang structs.
-        if '<' in pdb_name:
-            continue
-        short = pdb_name.split('::')[-1]
-        clang_key = pdb_name if pdb_name in structs else short if short in structs else None
-        if clang_key is None:
-            continue
-
-        matched += 1
-        clang = structs[clang_key]
-        pdb_sz = pdb_info['size']
-        pdb_fields = pdb_info['fields']    # [(name, offset)] — own members only
-        pdb_bases  = pdb_info['bases']     # [(base_name, base_offset)]
-
-        # Always store PDB base offsets and vfuncs — used by flattening and vtable building
-        clang['pdb_bases'] = pdb_bases
-        clang['vfuncs'] = pdb_info.get('vfuncs', [])
-
-        if clang['size'] == 1 and pdb_sz > 1:
-            # libclang got an incomplete layout; use PDB size + own fields.
-            # Pass structs_by_short so field types can be inferred from known struct sizes.
-            clang['size'] = pdb_sz
-            clang['fields'] = _pdb_fields_to_clang(pdb_fields, pdb_sz, structs_by_short)
-            # Enrich PDB fields with clang type hints (clang knows types even
-            # when it can't compute offsets for incomplete types)
-            hints = clang.get('field_type_hints', {})
-            if hints:
-                for f in clang['fields']:
-                    if f['type'].startswith('bytes:') or f['type'] == 'ptr':
-                        hint = hints.get(f['name'])
-                        if hint:
-                            f['type'] = hint
-            supplemented += 1
-
-        elif clang['size'] == pdb_sz and pdb_sz > 1:
-            size_ok += 1
-            # Sizes match — fill PDB field names and template types where libclang is incomplete.
-            clang_field_map = {f['offset']: f for f in clang['fields']}
-            for entry in pdb_fields:
-                pdb_fname, pdb_foff = entry[0], entry[1]
-                pdb_type_name = entry[2] if len(entry) > 2 else ''
-                if pdb_foff in clang_field_map:
-                    f = clang_field_map[pdb_foff]
-                    if not f['name']:
-                        f['name'] = pdb_fname
-                    # Enrich field type with PDB template info when clang has generic type
-                    if pdb_type_name and '<' in pdb_type_name:
-                        cur_type = f['type']
-                        if cur_type.startswith('bytes:') or cur_type == 'ptr' or \
-                           (cur_type.startswith('struct:') and '<' not in cur_type):
-                            f['type'] = 'struct:' + pdb_type_name
-
-        elif clang['size'] == 1 and pdb_sz == 1:
-            # Both sides report size 1: forward declaration, empty tag struct, or enum.
-            # No field data on either side; nothing to merge.
-            pass
-
-        else:
-            # Genuine layout disagreement — both sides have a non-trivial size but disagree.
-            size_mismatch += 1
-            print('  SIZE MISMATCH: {} clang={} pdb={}'.format(pdb_name, clang['size'], pdb_sz))
-
-    print('PDB cross-reference: {} matched, {} size-ok, {} supplemented, {} mismatched'.format(
-        matched, size_ok, supplemented, size_mismatch))
-
-
-def _pdb_fields_to_clang(pdb_fields, total_size, structs_by_short=None):
-    """Convert [(name, offset, pdb_type_name)] from PDB into our field format.
-
-    Uses pdb_type_name (from DIA fsym.type.name) to infer the struct type where possible,
-    falling back to structs_by_short size-matching, then bytes:N.
-    """
-    if not pdb_fields:
-        return []
-    sorted_fields = sorted(pdb_fields, key=lambda x: x[1])
-    result = []
-    for i, entry in enumerate(sorted_fields):
-        name, off = entry[0], entry[1]
-        pdb_type_name = entry[2] if len(entry) > 2 else ''
-        if i + 1 < len(sorted_fields):
-            next_off = sorted_fields[i + 1][1]
-        else:
-            next_off = total_size
-        fsize = next_off - off
-        if fsize <= 0:
-            continue
-
-        ftype = 'bytes:{}'.format(fsize)
-
-        # Priority 0: PDB type name is a template instantiation — use directly
-        if pdb_type_name and '<' in pdb_type_name:
-            ftype = 'struct:' + pdb_type_name
-
-        # Priority 1: use PDB type name if it refers to a known struct/enum
-        elif pdb_type_name and structs_by_short:
-            short = pdb_type_name.split('::')[-1].strip()
-            if short in structs_by_short:
-                cand = structs_by_short[short]
-                if cand['size'] == fsize:
-                    ftype = 'struct:' + cand['full_name']
-
-        # Priority 2: field name matches a known struct of the right size
-        if ftype.startswith('bytes:') and structs_by_short and name in structs_by_short:
-            cand = structs_by_short[name]
-            if cand['size'] == fsize:
-                ftype = 'struct:' + cand['full_name']
-
-        result.append({
-            'name': name,
-            'type': ftype,
-            'offset': off,
-            'size': fsize,
-        })
-    return result
 
 
 def _build_vtable_structs(structs):
@@ -2025,9 +1529,8 @@ def _flatten_structs(structs):
     print('Flattening: {} structs have field data after inheritance expansion'.format(gained))
 
 
-def run_version(version, symbols_json, fallback_symbols_json='[]', use_ccle=False):
+def run_version(version, symbols_json, fallback_symbols_json='[]'):
     cfg = VERSIONS[version]
-    pdb_path = cfg['pdb']
     output_path = cfg['output']
     parse_args = PARSE_ARGS_BASE + cfg['defines']
 
@@ -2037,25 +1540,10 @@ def run_version(version, symbols_json, fallback_symbols_json='[]', use_ccle=Fals
         print('ERROR: Could not find Skyrim.h at', SKYRIM_H)
         sys.exit(1)
 
-    if use_ccle:
-        print('Collecting types via ccle-re ($ccle/dumpTypes)...')
-        import ccle_client as _cac
-    else:
-        print('Collecting types via clang.exe (-ast-dump=json)...')
-        import clang_ast_collect as _cac
+    print('Collecting types via ccle-re ($ccle/dumpTypes)...')
+    import ccle_client as _cac
     enums, structs = _cac.collect_types(SKYRIM_H, parse_args, RE_INCLUDE, verbose=True)
     print('Found {} enums, {} structs/classes'.format(len(enums), len(structs)))
-
-    if not use_ccle:
-        _compute_vfuncs(structs)
-
-    if os.path.isfile(pdb_path):
-        print('Loading PDB type info from {}...'.format(os.path.basename(pdb_path)))
-        pdb_types = load_pdb_types(pdb_path)
-        print('Found {} RE:: types in PDB'.format(len(pdb_types)))
-        _merge_pdb_into_structs(structs, pdb_types)
-    else:
-        print('PDB not found at {}, skipping cross-reference'.format(pdb_path))
 
     vtable_structs = _build_vtable_structs(structs)
     _inject_vtable_fields(structs, vtable_structs)
@@ -2063,37 +1551,11 @@ def run_version(version, symbols_json, fallback_symbols_json='[]', use_ccle=Fals
 
     category = '/CommonLibSSE/RE'
 
-    # Optional: scan for C++ template instantiation types and emit sanitized aliases
+    # Scan for C++ template instantiation types and emit sanitized aliases
     try:
         from template_types import process_template_types as _process_templates
         _tmpl = _process_templates(structs)
         template_source = _tmpl.combined_source()
-        # Add template types to structs so they get created as Ghidra DataTypes.
-        # template_map: original → display name (RE:: stripped)
-        # Populate fields from PDB where available, flattening base class fields.
-        _pdb = pdb_types if os.path.isfile(pdb_path) else {}
-        _sbs = {st['name']: st for st in structs.values() if st['size'] > 1}
-
-        def _flatten_pdb_fields(pdb_name, pdb_db, depth=0):
-            """Recursively collect fields from a PDB type and its bases."""
-            if depth > 10:
-                return []
-            entry = pdb_db.get(pdb_name)
-            if not entry:
-                return []
-            collected = {}  # offset → (name, offset, type_name)
-            # First, pull in base class fields at their base offsets
-            for base_name, base_off in entry.get('bases', []):
-                for bf in _flatten_pdb_fields(base_name, pdb_db, depth + 1):
-                    abs_off = base_off + bf[1]
-                    if abs_off not in collected:
-                        collected[abs_off] = (bf[0], abs_off, bf[2] if len(bf) > 2 else '')
-            # Own fields override bases at the same offset
-            for f in entry.get('fields', []):
-                fname, foff = f[0], f[1]
-                ftype = f[2] if len(f) > 2 else ''
-                collected[foff] = (fname, foff, ftype)
-            return sorted(collected.values(), key=lambda x: x[1])
 
         # Pre-compute clangd layouts for all template instantiations.
         _tmpl_clangd_layouts: dict = {}
@@ -2121,32 +1583,8 @@ def run_version(version, symbols_json, fallback_symbols_json='[]', use_ccle=Fals
 
         for _orig, _display in _tmpl.template_map.items():
             if _display not in structs and _display not in enums:
-                _sz = 0
-                _fields = []
-                # Look up the original template name in PDB types for size + fields.
-                # Normalise whitespace so DIA ("Type >") and clang ("Type>,") keys match.
                 _orig_n = _norm_tmpl(_orig)
-                _orig_re = 'RE::' + _orig_n
-                pdb_entry = _pdb.get(_orig_n) or _pdb.get(_orig_re)
-                _pdb_name = _orig_n if _orig_n in _pdb else (_orig_re if _orig_re in _pdb else None)
-                if not pdb_entry:
-                    # Exact lookup failed — try fuzzy match for missing RE:: / default args
-                    _fuzz_key, pdb_entry = _pdb_fuzzy_lookup(_orig_n, _pdb)
-                    if pdb_entry:
-                        _pdb_name = _fuzz_key
-                if pdb_entry:
-                    _sz = pdb_entry.get('size', 0)
-                    if _sz > 0 and _pdb_name:
-                        flat = _flatten_pdb_fields(_pdb_name, _pdb)
-                        if flat:
-                            _fields = _pdb_fields_to_clang(flat, _sz, _sbs)
-
-                _clangd_sz, _clangd_fields = _tmpl_clangd_layouts.get(_orig_n, (0, []))
-                if _clangd_sz:
-                    if not _sz:
-                        _sz, _fields = _clangd_sz, _clangd_fields
-                    elif _clangd_sz == _sz:
-                        _fields = _clangd_fields
+                _sz, _fields = _tmpl_clangd_layouts.get(_orig_n, (0, []))
                 structs[_display] = {'name': _display, 'full_name': _display, 'size': _sz,
                                      'category': category, 'fields': _fields, 'bases': [],
                                      'has_vtable': False}
@@ -2156,11 +1594,6 @@ def run_version(version, symbols_json, fallback_symbols_json='[]', use_ccle=Fals
     except ImportError:
         template_source = ''
 
-    # Now that the template engine has materialised instantiations like
-    # BSPointerHandle<Actor> and BSStringT<char,4294967295,...> as struct
-    # entries, retry typedef/using aliases (ActorHandle, ObjectRefHandle,
-    # ProjectileHandle, BSString, ...) whose targets were missing at
-    # collect_types time.
     if hasattr(_cac, 'resolve_deferred_typedef_aliases'):
         _n_extra = _cac.resolve_deferred_typedef_aliases(enums, structs, verbose=True)
         if _n_extra:
@@ -2176,9 +1609,7 @@ def main():
     import argparse
 
     ap = argparse.ArgumentParser(description='Parse CommonLibSSE and generate Ghidra import script')
-    ap.add_argument('--use-ccle', action='store_true',
-                    help='Use ccle-re language server instead of clang.exe for type collection')
-    args = ap.parse_args()
+    ap.parse_args()
 
     # Load address databases (binary data, not source scanning)
     addr_lib = AddressLibrary()
@@ -2373,7 +1804,7 @@ def main():
 
     for version in ('se', 'ae'):
         fb_json = se_fallback_json if version == 'se' else ae_fallback_json
-        run_version(version, symbols_json, fb_json, use_ccle=args.use_ccle)
+        run_version(version, symbols_json, fb_json)
 
 
 if __name__ == '__main__':

@@ -1,12 +1,8 @@
-"""LSP client for ccle-re (forked ccls) — drop-in replacement for clang_ast_collect.
+"""LSP client for ccle-re (forked ccls) — type extraction via custom LSP extensions.
 
 Launches ccle-re as a subprocess over stdio (JSON-RPC 2.0), performs the standard
 LSP handshake, then uses custom extension requests ($ccle/dumpTypes,
 $ccle/vtableLayout) to collect types, enums, structs, and vtable layouts.
-
-The high-level API matches clang_ast_collect.collect_types() so
-parse_commonlib_types.py can swap ``import clang_ast_collect`` for
-``import ccle_client`` with minimal changes.
 
 Relocation scanning (REL::Relocation<>) remains in clang_ast_reloc.py — it is
 game-specific logic that does not belong in the language server fork.
@@ -46,7 +42,7 @@ def find_ccle_binary() -> Optional[str]:
 
 
 # ---------------------------------------------------------------------------
-# Primitive-size table (shared with clang_ast_collect)
+# Primitive-size table
 # ---------------------------------------------------------------------------
 
 _PRIM_SIZES: Dict[str, int] = {
@@ -340,7 +336,7 @@ def _path_to_uri(path: str) -> str:
 def _qualtype_to_pipeline(qual: str) -> str:
     """Map a ccle-re qualType string to the pipeline descriptor format.
 
-    Uses the same logic as clang_ast_collect._qualtype_to_pipeline but pulls
+    Converts a clang qualType string to pipeline type descriptor. Pulls
     from the module-level _ENUM_NAMES set populated during conversion.
     """
     stripped = re.sub(r"^(?:const|volatile)\s+", "", qual.strip())
@@ -414,7 +410,7 @@ def _convert_records(raw_records: List[dict]) -> Dict[str, dict]:
 
     Note: The raw fields from ccle-re include offset and qualType which we
     convert to pipeline descriptors.  This replaces the separate record-layout
-    merge pass that the clang_ast_collect pipeline needs.
+    merge pass that the old clang CLI pipeline needed.
     """
     out: Dict[str, dict] = {}
     for r in raw_records:
@@ -497,7 +493,7 @@ def _convert_typedefs(
     """Convert $ccle/dumpTypes .typedefs entries and merge into enums/structs.
 
     Typedef aliases are resolved against the already-populated enums and structs
-    dicts, matching the deferred-resolution logic in clang_ast_collect.
+    dicts, with deferred resolution for aliases whose targets aren't yet known.
     """
     for td in raw_typedefs:
         full_name = td["qualName"]
@@ -564,9 +560,7 @@ def _convert_typedefs(
             continue
 
         # TODO: If the target is a template instantiation not yet in structs,
-        # defer and retry after the template engine runs — matching the
-        # _TYPEDEF_ALIASES / resolve_deferred_typedef_aliases pattern in
-        # clang_ast_collect.
+        # defer and retry after the template engine runs.
 
 
 def _lookup_by_qualname(target: str, dct: Dict[str, dict]) -> Optional[str]:
@@ -583,7 +577,7 @@ def _lookup_by_qualname(target: str, dct: Dict[str, dict]) -> Optional[str]:
 
 
 # ---------------------------------------------------------------------------
-# High-level API — drop-in replacement for clang_ast_collect.collect_types
+# High-level API
 # ---------------------------------------------------------------------------
 
 def _write_compile_commands(
@@ -611,7 +605,7 @@ def collect_types(
     verbose: bool = False,
     index_wait: float = 60.0,
 ) -> Tuple[dict, dict]:
-    """Drop-in replacement for clang_ast_collect.collect_types().
+    """Collect types from CommonLibSSE headers via ccle-re.
 
     Returns (enums, structs) dicts matching the pipeline shape:
         enums:   {full_name: {name, full_name, size, category, values: [(name, value), ...]}}

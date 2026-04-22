@@ -30,11 +30,58 @@ import tempfile
 from concurrent.futures import ThreadPoolExecutor
 from typing import Dict, List, Optional, Tuple
 
-from clang_ast_collect import (
-    _build_driver_args,
-    _iter_toplevel_objects,
-    find_clang_binary,
-)
+from clangd_template_layouts import find_clang_binary
+
+
+def _build_driver_args(parse_args):
+    """Convert libclang-style parse_args to clang driver args."""
+    out = []
+    i = 0
+    while i < len(parse_args):
+        a = parse_args[i]
+        if a in ('-x', '--language'):
+            i += 2
+            continue
+        if a in ('-isystem', '-include', '-MF'):
+            if i + 1 < len(parse_args):
+                out.append(a)
+                out.append(parse_args[i + 1])
+                i += 2
+                continue
+        if any(a.startswith(p) for p in ('-I', '-D', '-std', '-f', '-W', '-m')):
+            out.append(a)
+        i += 1
+    return out
+
+
+def _iter_toplevel_objects(stream):
+    """Yield each top-level JSON object from a concatenated-JSON stream."""
+    decoder = json.JSONDecoder()
+    buf = ''
+    CHUNK = 1 << 20
+    while True:
+        data = stream.read(CHUNK)
+        if not data:
+            break
+        buf += data
+        i = 0
+        n = len(buf)
+        while i < n:
+            while i < n and buf[i].isspace():
+                i += 1
+            if i >= n:
+                break
+            try:
+                obj, j = decoder.raw_decode(buf, i)
+            except json.JSONDecodeError:
+                break
+            yield obj
+            i = j
+        buf = buf[i:]
+    buf = buf.strip()
+    if buf:
+        obj = json.loads(buf)
+        yield obj
 
 
 # Variable names too generic to use as the symbol (we use the enclosing
@@ -500,11 +547,28 @@ class _Walker:
 
 
 # ---------------------------------------------------------------------------
-# Top-level-scope derivation (mirrors clang_ast_collect._derive_scope_for_toplevel)
+# Top-level-scope derivation
 # ---------------------------------------------------------------------------
 
-# Re-use the mangled-name parser from clang_ast_collect (same logic)
-from clang_ast_collect import _class_scope_from_mangled as _scope_from_mangled
+_MANGLE_RE = re.compile(
+    r'^\?(\?[_0-9A-Z])?([A-Za-z_][A-Za-z0-9_]*)?((?:@[^@]+)+)@@'
+)
+
+def _scope_from_mangled(mangled):
+    """Given a method's mangledName, return its containing class qualified name."""
+    m = _MANGLE_RE.match(mangled)
+    if not m:
+        return None
+    special = m.group(1)
+    name = m.group(2) or ''
+    scope_chain = m.group(3)
+    parts = [p for p in scope_chain.split('@') if p]
+    parts = [p for p in parts if not p.startswith('?$')]
+    if not parts and not name:
+        return None
+    if special and name:
+        return '::'.join(list(reversed(parts)) + [name])
+    return '::'.join(reversed(parts))
 
 
 def _derive_toplevel_scope(node: dict, root_ns: str) -> List[str]:
