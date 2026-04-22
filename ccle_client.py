@@ -470,10 +470,14 @@ def _convert_records(raw_records: List[dict]) -> Dict[str, dict]:
 
         vfuncs.sort(key=lambda x: x[1])
 
+        rec_size = r.get("size", 0)
+        if rec_size <= 0:
+            rec_size = 1
+
         out[full_name] = {
             "name": short_name,
             "full_name": full_name,
-            "size": r.get("size", 0),
+            "size": rec_size,
             "category": category,
             "fields": fields,
             "field_type_hints": field_type_hints,

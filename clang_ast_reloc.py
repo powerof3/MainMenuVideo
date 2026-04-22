@@ -143,10 +143,25 @@ def _method_signature(qual_type: str, param_names: List[str]) -> Tuple[str, str]
     `param_names` is the list of ParmVarDecl names to merge into the params.
     """
     qt = qual_type.strip()
-    # Find outermost '(' matching final ')'
+    # Trailing-return-type `auto (...) -> T` is not parseable by Ghidra's C
+    # parser (both `auto` and the `->` syntax choke it).  Drop the signature
+    # entirely so the symbol's name is still applied without a prototype.
+    if qt.startswith('auto ') and ' -> ' in qt:
+        return '', ''
+    # Find the last top-level ')' (skipping trailing cv/ref/noexcept qualifiers).
     depth = 0
-    last_open = -1
+    last_close = -1
     for i in range(len(qt) - 1, -1, -1):
+        if qt[i] == ')':
+            if depth == 0:
+                last_close = i
+                break
+    if last_close < 0:
+        return _norm_type(qt), ''
+    # Walk back from last_close to matching '('.
+    depth = 1
+    last_open = -1
+    for i in range(last_close - 1, -1, -1):
         if qt[i] == ')':
             depth += 1
         elif qt[i] == '(':
@@ -157,9 +172,7 @@ def _method_signature(qual_type: str, param_names: List[str]) -> Tuple[str, str]
     if last_open < 0:
         return _norm_type(qt), ''
     ret = _norm_type(qt[:last_open])
-    params_raw = qt[last_open + 1:-1]
-    # Strip trailing cv-qualifiers after the ')' — already dropped since we
-    # matched the outermost parens.
+    params_raw = qt[last_open + 1:last_close]
     # Split params at top level commas
     parts: List[str] = []
     depth = 0

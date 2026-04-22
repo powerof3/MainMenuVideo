@@ -43,6 +43,13 @@ _ENUM_NAMES: set = set()
 # RE::NiSkinData::BoneData in NiSkinData.h).
 _NESTED_STRUCT_NAMES: Dict[str, set] = {}
 
+# Typedef/using aliases whose target is an enum, record, or template instantiation
+# (not a primitive or pointer).  Resolved post-walk via _resolve_typedef_aliases.
+# Each entry: {full_name, short_name, target, kind_hint, category, ns_stack}
+#   target: qualType or desugaredQualType spelling of the target
+#   kind_hint: 'enum' | 'record' | 'auto' (TypedefType — chase through)
+_TYPEDEF_ALIASES: List[dict] = []
+
 # Primitive/stdint name → byte size.  Shared by enum and typedef sizing.
 _PRIM_SIZES: Dict[str, int] = {
     'bool': 1, 'char': 1, 'signed char': 1, 'unsigned char': 1,
@@ -439,26 +446,51 @@ def _walk(node, ns_stack: List[str], re_dir: str,
         if full_name in structs or full_name in enums:
             return
         ty = node.get('type', {}) or {}
-        desugared = (ty.get('desugaredQualType') or ty.get('qualType') or '').strip()
+        qt = (ty.get('qualType') or '').strip()
+        desugared = (ty.get('desugaredQualType') or qt).strip()
         if not desugared:
             return
-        # Pointer types → 8 bytes.  Primitive/stdint → _PRIM_SIZES lookup.
-        # Anything else (struct/template instantiation) → skip; it'll come in
-        # via the record-layouts pass or template_types.
-        if desugared.endswith('*'):
-            size = 8
-        else:
-            stripped = re.sub(r'^(?:const|volatile)\s+', '', desugared)
-            stripped = re.sub(r'\s+(?:const|volatile)$', '', stripped).strip()
-            size = _PRIM_SIZES.get(stripped, 0)
-        if size <= 0:
-            return
         category = '/CommonLibSSE/' + '/'.join(ns_stack) if ns_stack else '/CommonLibSSE'
-        structs[full_name] = {
-            'name': name, 'full_name': full_name, 'size': size,
-            'category': category, 'fields': [], 'bases': [],
-            'has_vtable': False,
-        }
+        # Pointer types → 8 bytes.  Primitive/stdint → _PRIM_SIZES lookup.
+        if desugared.endswith('*'):
+            structs[full_name] = {
+                'name': name, 'full_name': full_name, 'size': 8,
+                'category': category, 'fields': [], 'bases': [],
+                'has_vtable': False,
+            }
+            return
+        stripped = re.sub(r'^(?:const|volatile)\s+', '', desugared)
+        stripped = re.sub(r'\s+(?:const|volatile)$', '', stripped).strip()
+        size = _PRIM_SIZES.get(stripped, 0)
+        if size > 0:
+            structs[full_name] = {
+                'name': name, 'full_name': full_name, 'size': size,
+                'category': category, 'fields': [], 'bases': [],
+                'has_vtable': False,
+            }
+            return
+        # Enum / record / template-instantiation aliases: defer to
+        # _resolve_typedef_aliases once all enums and structs are collected.
+        inner = node.get('inner') or []
+        inner_kind = inner[0].get('kind') if inner else None
+        if inner_kind == 'EnumType':
+            kind_hint = 'enum'
+        elif inner_kind in ('RecordType', 'TemplateSpecializationType', 'ElaboratedType'):
+            kind_hint = 'record'
+        elif inner_kind == 'TypedefType':
+            # Alias-of-alias: let post-resolution chase the desugared target.
+            kind_hint = 'auto'
+        else:
+            return
+        _TYPEDEF_ALIASES.append({
+            'full_name': full_name,
+            'short_name': name,
+            'target': desugared,
+            'target_qt': qt,
+            'kind_hint': kind_hint,
+            'category': category,
+            'ns_stack': list(ns_stack),
+        })
         return
 
 
@@ -559,6 +591,7 @@ def collect_types(skyrim_h: str, parse_args: List[str], re_dir: str,
 
     enums: Dict[str, dict] = {}
     structs: Dict[str, dict] = {}
+    _TYPEDEF_ALIASES.clear()
 
     import tempfile
     # Drain each JSON pass into its own spool, then two-pass-walk it.
@@ -594,7 +627,141 @@ def collect_types(skyrim_h: str, parse_args: List[str], re_dir: str,
     # using the enclosing struct's namespace scope.
     _resolve_bases(structs, verbose=verbose)
 
+    # Resolve enum / template-instantiation typedef aliases now that enums and
+    # structs are fully populated.
+    _resolve_typedef_aliases(enums, structs, verbose=verbose)
+
     return enums, structs
+
+
+def _resolve_typedef_aliases(enums: Dict[str, dict], structs: Dict[str, dict],
+                             verbose: bool = False) -> None:
+    """Emit duplicate entries for typedef/using aliases pointing to enums or records.
+
+    `clang_ast_collect._walk` collects these into `_TYPEDEF_ALIASES` during the
+    walk (since at walk time the alias's target may not yet be registered).
+    Here we look up the target in enums/structs and emit a duplicate entry
+    under the alias's full_name so Ghidra's data-type manager resolves the
+    alias name (e.g. ActorHandle → BSPointerHandle<Actor>, EffectArchetype →
+    EffectArchetypes::ArchetypeID).
+    """
+    # Index by short name for unqualified lookups.
+    enum_short_index: Dict[str, List[str]] = {}
+    for full in enums:
+        enum_short_index.setdefault(full.split('::')[-1], []).append(full)
+    struct_short_index: Dict[str, List[str]] = {}
+    for full in structs:
+        struct_short_index.setdefault(full.split('::')[-1], []).append(full)
+
+    def _lookup(target: str, ns_stack: List[str], dct: Dict[str, dict],
+                short_index: Dict[str, List[str]]) -> Optional[str]:
+        # Strip cv/class/struct/enum keywords.
+        t = re.sub(r'\b(?:class|struct|union|enum)\s+', '', target).strip()
+        t = re.sub(r'^(?:const|volatile)\s+', '', t).strip()
+        if t in dct:
+            return t
+        # Walk enclosing namespace chain inside → outside.
+        for i in range(len(ns_stack), -1, -1):
+            cand = '::'.join(ns_stack[:i] + [t]) if ns_stack[:i] else t
+            if cand in dct:
+                return cand
+        # Unique-short-name fallback.
+        short = t.split('::')[-1]
+        hits = short_index.get(short, [])
+        if len(hits) == 1:
+            return hits[0]
+        return None
+
+    emitted_enum = 0
+    emitted_struct = 0
+    remaining: List[dict] = []
+    for a in _TYPEDEF_ALIASES:
+        full_name = a['full_name']
+        if full_name in enums or full_name in structs:
+            # Already resolved (either directly or by an earlier pass).
+            continue
+        # Try enum first when kind_hint says so, else record, else both orders.
+        kinds = {
+            'enum': ('enum', 'record'),
+            'record': ('record', 'enum'),
+            'auto': ('enum', 'record'),
+        }.get(a['kind_hint'], ('enum', 'record'))
+        # Candidate targets — prefer desugared, fall back to qualType.
+        candidates = [a['target']]
+        if a.get('target_qt') and a['target_qt'] != a['target']:
+            candidates.append(a['target_qt'])
+        # Template engine emits display names with `RE::` stripped everywhere
+        # (e.g. `BSPointerHandle<Actor>` for `RE::BSPointerHandle<RE::Actor>`).
+        # Add the stripped spelling so template-instantiation aliases resolve.
+        for _c in list(candidates):
+            _stripped = _c.replace('RE::', '')
+            if _stripped != _c and _stripped not in candidates:
+                candidates.append(_stripped)
+        resolved: Optional[Tuple[str, dict]] = None  # (kind, entry_dict)
+        for target in candidates:
+            if resolved:
+                break
+            for which in kinds:
+                if which == 'enum':
+                    hit = _lookup(target, a['ns_stack'], enums, enum_short_index)
+                    if hit:
+                        resolved = ('enum', enums[hit])
+                        break
+                else:
+                    hit = _lookup(target, a['ns_stack'], structs, struct_short_index)
+                    if hit:
+                        resolved = ('struct', structs[hit])
+                        break
+        if not resolved:
+            remaining.append(a)
+            continue
+        kind, entry = resolved
+        if kind == 'enum':
+            enums[full_name] = {
+                'name': a['short_name'],
+                'full_name': full_name,
+                'size': entry['size'],
+                'category': a['category'],
+                'values': list(entry['values']),
+            }
+            emitted_enum += 1
+        else:
+            structs[full_name] = {
+                'name': a['short_name'],
+                'full_name': full_name,
+                'size': entry.get('size', 0),
+                'category': a['category'],
+                'fields': [],
+                'bases': [],
+                'has_vtable': False,
+            }
+            emitted_struct += 1
+    # Retain only unresolved aliases so a later pass (after the template engine
+    # has materialised BSPointerHandle<Actor> etc.) can retry them.
+    _TYPEDEF_ALIASES[:] = remaining
+    if verbose:
+        print(f'  [clang-ast] _resolve_typedef_aliases: emitted {emitted_enum} '
+              f'enum aliases, {emitted_struct} struct aliases '
+              f'({len(remaining)} deferred)')
+
+
+def resolve_deferred_typedef_aliases(enums: Dict[str, dict],
+                                     structs: Dict[str, dict],
+                                     verbose: bool = False) -> int:
+    """Re-run typedef alias resolution after the template engine has added
+    instantiations like ``BSPointerHandle<Actor>`` or
+    ``BSStringT<char, 4294967295, DynamicMemoryManagementPol>`` to *structs*.
+
+    Intended to be called from ``parse_commonlib_types.py`` once template
+    expansion is complete.  Returns the number of aliases emitted this pass.
+    """
+    before = len(_TYPEDEF_ALIASES)
+    if before == 0:
+        return 0
+    before_enums = len(enums)
+    before_structs = len(structs)
+    _resolve_typedef_aliases(enums, structs, verbose=verbose)
+    return (len(enums) - before_enums) + (len(structs) - before_structs)
 
 
 _TEMPLATE_RE = re.compile(r'^([^<]+)(<.*>)?$')
@@ -653,6 +820,7 @@ def _resolve_bases(structs: Dict[str, dict], verbose: bool = False) -> None:
 
 _TOPLEVEL_SCOPED_KINDS = (
     'CXXRecordDecl', 'ClassTemplateSpecializationDecl', 'EnumDecl',
+    'TypedefDecl', 'TypeAliasDecl',
 )
 
 
