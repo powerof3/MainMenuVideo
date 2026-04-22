@@ -100,6 +100,9 @@ class LspClient:
         # Pending request futures: id -> (Event, result_holder_dict)
         self._pending: Dict[int, Tuple[threading.Event, dict]] = {}
 
+        # Progress tracking for indexing
+        self._index_done = threading.Event()
+
         # Start the reader thread
         self._reader_thread = threading.Thread(target=self._reader_loop, daemon=True)
         self._reader_thread.start()
@@ -166,14 +169,24 @@ class LspClient:
                 self._handle_notification(msg)
 
     def _handle_notification(self, msg: dict) -> None:
-        """Handle server-sent notifications.
+        """Handle server-sent notifications."""
+        method = msg.get("method", "")
+        params = msg.get("params", {})
 
-        We silently discard window/logMessage, $/progress, and other
-        notifications since we don't need to act on them.
-        """
-        # TODO: If ccle-re emits indexing progress via $/progress, we could
-        # surface it here for verbose logging.
-        pass
+        if method == "$/progress":
+            token = params.get("token", "")
+            value = params.get("value", {})
+            if token == "index" and value.get("kind") == "end":
+                self._index_done.set()
+
+        if method == "window/workDoneProgress/create":
+            msg_id = msg.get("id")
+            if msg_id is not None:
+                self._send({"jsonrpc": "2.0", "id": msg_id, "result": None})
+
+    def wait_for_indexing(self, timeout: float = 300.0) -> bool:
+        """Block until the server signals indexing is complete."""
+        return self._index_done.wait(timeout=timeout)
 
     # ------------------------------------------------------------------
     # Request / notify helpers
@@ -631,8 +644,11 @@ def collect_types(
             client.initialize(root_uri, index_threads=4)
 
             if verbose:
-                print(f"  [ccle-re] waiting {index_wait:.0f}s for indexing...")
-            _time.sleep(index_wait)
+                print(f"  [ccle-re] waiting for indexing (timeout={index_wait:.0f}s)...")
+            if not client.wait_for_indexing(timeout=index_wait):
+                if verbose:
+                    print("  [ccle-re] indexing wait done (progress signal not received, "
+                          "may have completed before tracking started)")
 
             if verbose:
                 print("  [ccle-re] requesting $ccle/dumpTypes...")
