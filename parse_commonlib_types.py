@@ -2025,7 +2025,7 @@ def _flatten_structs(structs):
     print('Flattening: {} structs have field data after inheritance expansion'.format(gained))
 
 
-def run_version(version, symbols_json, fallback_symbols_json='[]'):
+def run_version(version, symbols_json, fallback_symbols_json='[]', use_ccle=False):
     cfg = VERSIONS[version]
     pdb_path = cfg['pdb']
     output_path = cfg['output']
@@ -2037,12 +2037,17 @@ def run_version(version, symbols_json, fallback_symbols_json='[]'):
         print('ERROR: Could not find Skyrim.h at', SKYRIM_H)
         sys.exit(1)
 
-    print('Collecting types via clang.exe (-ast-dump=json)...')
-    import clang_ast_collect as _cac
+    if use_ccle:
+        print('Collecting types via ccle-re ($ccle/dumpTypes)...')
+        import ccle_client as _cac
+    else:
+        print('Collecting types via clang.exe (-ast-dump=json)...')
+        import clang_ast_collect as _cac
     enums, structs = _cac.collect_types(SKYRIM_H, parse_args, RE_INCLUDE, verbose=True)
     print('Found {} enums, {} structs/classes'.format(len(enums), len(structs)))
 
-    _compute_vfuncs(structs)
+    if not use_ccle:
+        _compute_vfuncs(structs)
 
     if os.path.isfile(pdb_path):
         print('Loading PDB type info from {}...'.format(os.path.basename(pdb_path)))
@@ -2151,6 +2156,16 @@ def run_version(version, symbols_json, fallback_symbols_json='[]'):
     except ImportError:
         template_source = ''
 
+    # Now that the template engine has materialised instantiations like
+    # BSPointerHandle<Actor> and BSStringT<char,4294967295,...> as struct
+    # entries, retry typedef/using aliases (ActorHandle, ObjectRefHandle,
+    # ProjectileHandle, BSString, ...) whose targets were missing at
+    # collect_types time.
+    if hasattr(_cac, 'resolve_deferred_typedef_aliases'):
+        _n_extra = _cac.resolve_deferred_typedef_aliases(enums, structs, verbose=True)
+        if _n_extra:
+            print('Resolved {} deferred typedef alias(es) post-template'.format(_n_extra))
+
     print('Generating Ghidra script...')
     n_enums, n_structs = generate_script(enums, structs, vtable_structs, output_path, version, symbols_json, fallback_symbols_json, template_source)
     print('Output: {} ({} enums, {} structs)'.format(output_path, n_enums, n_structs))
@@ -2161,7 +2176,9 @@ def main():
     import argparse
 
     ap = argparse.ArgumentParser(description='Parse CommonLibSSE and generate Ghidra import script')
-    ap.parse_args()
+    ap.add_argument('--use-ccle', action='store_true',
+                    help='Use ccle-re language server instead of clang.exe for type collection')
+    args = ap.parse_args()
 
     # Load address databases (binary data, not source scanning)
     addr_lib = AddressLibrary()
@@ -2356,7 +2373,7 @@ def main():
 
     for version in ('se', 'ae'):
         fb_json = se_fallback_json if version == 'se' else ae_fallback_json
-        run_version(version, symbols_json, fb_json)
+        run_version(version, symbols_json, fb_json, use_ccle=args.use_ccle)
 
 
 if __name__ == '__main__':

@@ -441,6 +441,20 @@ def _convert_records(raw_records: List[dict]) -> Dict[str, dict]:
 
         has_vtable = r.get("hasVTable", False)
 
+        vmethods: Dict[str, dict] = {}
+        vfuncs: List[Tuple[str, int]] = []
+        for m in r.get("methods", []):
+            mname = m.get("shortName", "")
+            if not mname:
+                continue
+            if m.get("isVirtual"):
+                vmethods[mname] = {"pure": m.get("isPure", False)}
+                vi = m.get("vtableIndex", -1)
+                if vi >= 0:
+                    vfuncs.append((mname, vi * 8))
+
+        vfuncs.sort(key=lambda x: x[1])
+
         out[full_name] = {
             "name": short_name,
             "full_name": full_name,
@@ -450,6 +464,8 @@ def _convert_records(raw_records: List[dict]) -> Dict[str, dict]:
             "field_type_hints": field_type_hints,
             "bases": bases,
             "has_vtable": has_vtable,
+            "vmethods": vmethods,
+            "vfuncs": vfuncs,
         }
     return out
 
