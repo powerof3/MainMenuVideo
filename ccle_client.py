@@ -1,8 +1,8 @@
-"""LSP client for ccle-re (forked ccls) — type extraction via custom LSP extensions.
+"""LSP client for ccls-re (forked ccls) — type extraction via custom LSP extensions.
 
-Launches ccle-re as a subprocess over stdio (JSON-RPC 2.0), performs the standard
-LSP handshake, then uses custom extension requests ($ccle/dumpTypes,
-$ccle/vtableLayout) to collect types, enums, structs, and vtable layouts.
+Launches ccls-re as a subprocess over stdio (JSON-RPC 2.0), performs the standard
+LSP handshake, then uses custom extension requests ($ccls/dumpTypes,
+$ccls/vtableLayout) to collect types, enums, structs, and vtable layouts.
 
 Relocation scanning (REL::Relocation<>) remains in clang_ast_reloc.py — it is
 game-specific logic that does not belong in the language server fork.
@@ -25,20 +25,12 @@ from clangd_template_layouts import _record_type_to_pipeline, _qualify_re
 # Binary discovery
 # ---------------------------------------------------------------------------
 
-_CCLE_BINARY_NAME = "ccle-re.exe" if os.name == "nt" else "ccle-re"
-_CCLE_FALLBACK_PATH = os.path.join(
-    "D:\\GitHub\\ghidrascripts\\ccle-re\\build", _CCLE_BINARY_NAME
-)
+_CCLS_BINARY_NAME = "ccls-re.exe" if os.name == "nt" else "ccls-re"
 
 
-def find_ccle_binary() -> Optional[str]:
-    """Locate the ccle-re binary.  Checks PATH first, then the fallback build dir."""
-    on_path = shutil.which(_CCLE_BINARY_NAME)
-    if on_path:
-        return on_path
-    if os.path.isfile(_CCLE_FALLBACK_PATH):
-        return _CCLE_FALLBACK_PATH
-    return None
+def find_ccls_binary() -> Optional[str]:
+    """Locate the ccls-re binary on PATH."""
+    return shutil.which(_CCLS_BINARY_NAME)
 
 
 # ---------------------------------------------------------------------------
@@ -69,7 +61,7 @@ _ENUM_NAMES: set = set()
 # ---------------------------------------------------------------------------
 
 class LspClient:
-    """Stdio-based JSON-RPC 2.0 client for an LSP server (ccle-re).
+    """Stdio-based JSON-RPC 2.0 client for an LSP server (ccls-re).
 
     Spawns the server as a subprocess with stdin/stdout pipes.  A background
     reader thread demultiplexes responses (matched by ``id``) from server-
@@ -286,32 +278,32 @@ class LspClient:
                 pass
 
     # ------------------------------------------------------------------
-    # Custom ccle-re extensions
+    # Custom ccls-re extensions
     # ------------------------------------------------------------------
 
-    def ccle_dump_types(
+    def ccls_dump_types(
         self,
         namespaces: List[str],
         include_prefix: str,
     ) -> dict:
-        """$ccle/dumpTypes — fetch all types under the given namespaces.
+        """$ccls/dumpTypes — fetch all types under the given namespaces.
 
         Returns the raw response dict with keys: records, enums, typedefs.
         """
-        # TODO: Confirm parameter names with the actual ccle-re fork once
+        # TODO: Confirm parameter names with the actual ccls-re fork once
         # the extension is implemented.  The names below match the spec
         # in the task description.
-        return self.request("$ccle/dumpTypes", {
+        return self.request("$ccls/dumpTypes", {
             "namespaces": namespaces,
             "includePrefix": include_prefix,
         })
 
-    def ccle_vtable_layout(self, qual_name: str) -> dict:
-        """$ccle/vtableLayout — fetch vtable slot assignments for a class.
+    def ccls_vtable_layout(self, qual_name: str) -> dict:
+        """$ccls/vtableLayout — fetch vtable slot assignments for a class.
 
         Returns dict with keys: qualName, slots.
         """
-        return self.request("$ccle/vtableLayout", {
+        return self.request("$ccls/vtableLayout", {
             "qualName": qual_name,
         })
 
@@ -334,7 +326,7 @@ def _path_to_uri(path: str) -> str:
 # ---------------------------------------------------------------------------
 
 def _qualtype_to_pipeline(qual: str) -> str:
-    """Map a ccle-re qualType string to the pipeline descriptor format.
+    """Map a ccls-re qualType string to the pipeline descriptor format.
 
     Converts a clang qualType string to pipeline type descriptor. Pulls
     from the module-level _ENUM_NAMES set populated during conversion.
@@ -357,7 +349,7 @@ def _qualtype_to_pipeline(qual: str) -> str:
 # ---------------------------------------------------------------------------
 
 def _convert_enums(raw_enums: List[dict]) -> Dict[str, dict]:
-    """Convert $ccle/dumpTypes .enums entries to the pipeline enum dict shape.
+    """Convert $ccls/dumpTypes .enums entries to the pipeline enum dict shape.
 
     Pipeline shape: {full_name: {name, full_name, size, category, values: [(name, value), ...]}}
     """
@@ -402,13 +394,13 @@ def _convert_enums(raw_enums: List[dict]) -> Dict[str, dict]:
 
 
 def _convert_records(raw_records: List[dict]) -> Dict[str, dict]:
-    """Convert $ccle/dumpTypes .records entries to the pipeline struct dict shape.
+    """Convert $ccls/dumpTypes .records entries to the pipeline struct dict shape.
 
     Pipeline shape: {full_name: {name, full_name, size, category,
                      fields: [(name, offset, type_str), ...],
                      bases: [full_name, ...], has_vtable: bool}}
 
-    Note: The raw fields from ccle-re include offset and qualType which we
+    Note: The raw fields from ccls-re include offset and qualType which we
     convert to pipeline descriptors.  This replaces the separate record-layout
     merge pass that the old clang CLI pipeline needed.
     """
@@ -435,7 +427,7 @@ def _convert_records(raw_records: List[dict]) -> Dict[str, dict]:
             ftype_raw = f.get("qualType", "")
             ftype = _qualtype_to_pipeline(ftype_raw)
 
-            # TODO: ccle-re returns offset in bytes; verify this matches the
+            # TODO: ccls-re returns offset in bytes; verify this matches the
             # -fdump-record-layouts byte offsets used by the existing pipeline.
             offset = f.get("offset", 0)
             size = f.get("size", 0)
@@ -490,7 +482,7 @@ def _convert_typedefs(
     enums: Dict[str, dict],
     structs: Dict[str, dict],
 ) -> None:
-    """Convert $ccle/dumpTypes .typedefs entries and merge into enums/structs.
+    """Convert $ccls/dumpTypes .typedefs entries and merge into enums/structs.
 
     Typedef aliases are resolved against the already-populated enums and structs
     dicts, with deferred resolution for aliases whose targets aren't yet known.
@@ -531,7 +523,7 @@ def _convert_typedefs(
             continue
 
         # Try to resolve the target against known enums/structs.
-        # TODO: The target USR from ccle-re should allow exact matching once
+        # TODO: The target USR from ccls-re should allow exact matching once
         # we build a USR index.  For now, use qualified-name lookup.
         resolved_enum = _lookup_by_qualname(target_canonical, enums)
         if resolved_enum:
@@ -583,7 +575,7 @@ def _lookup_by_qualname(target: str, dct: Dict[str, dict]) -> Optional[str]:
 def _write_compile_commands(
     skyrim_h: str, parse_args: List[str], root_dir: str
 ) -> str:
-    """Write a compile_commands.json for ccle-re at the project root."""
+    """Write a compile_commands.json for ccls-re at the project root."""
     import json as _json
 
     cmd_parts = ["clang++"] + parse_args + ["-c", skyrim_h.replace("\\", "/")]
@@ -604,8 +596,9 @@ def collect_types(
     re_include: str,
     verbose: bool = False,
     index_wait: float = 60.0,
+    ccls_binary: Optional[str] = None,
 ) -> Tuple[dict, dict]:
-    """Collect types from CommonLibSSE headers via ccle-re.
+    """Collect types from CommonLibSSE headers via ccls-re.
 
     Returns (enums, structs) dicts matching the pipeline shape:
         enums:   {full_name: {name, full_name, size, category, values: [(name, value), ...]}}
@@ -614,16 +607,15 @@ def collect_types(
                   field_type_hints: {name: type_str},
                   bases: [full_name, ...], has_vtable: bool}}
 
-    Uses ccle-re's $ccle/dumpTypes extension instead of spawning multiple
+    Uses ccls-re's $ccls/dumpTypes extension instead of spawning multiple
     clang.exe JSON AST + record layout passes.
     """
     import time as _time
 
-    binary = find_ccle_binary()
+    binary = ccls_binary or find_ccls_binary()
     if not binary:
         raise RuntimeError(
-            "ccle-re binary not found.  Place it on PATH or build at "
-            f"{_CCLE_FALLBACK_PATH}"
+            "ccls-re binary not found. Place it on PATH or pass ccls_binary="
         )
 
     _ENUM_NAMES.clear()
@@ -632,8 +624,8 @@ def collect_types(
     root_uri = _path_to_uri(root_dir)
 
     if verbose:
-        print(f"  [ccle-re] launching {binary}")
-        print(f"  [ccle-re] root: {root_dir}")
+        print(f"  [ccls-re] launching {binary}")
+        print(f"  [ccls-re] root: {root_dir}")
 
     cc_path = _write_compile_commands(skyrim_h, parse_args, root_dir)
     cc_cleanup = True
@@ -644,16 +636,16 @@ def collect_types(
             client.initialize(root_uri, index_threads=4)
 
             if verbose:
-                print(f"  [ccle-re] waiting for indexing (timeout={index_wait:.0f}s)...")
+                print(f"  [ccls-re] waiting for indexing (timeout={index_wait:.0f}s)...")
             if not client.wait_for_indexing(timeout=index_wait):
                 if verbose:
-                    print("  [ccle-re] indexing wait done (progress signal not received, "
+                    print("  [ccls-re] indexing wait done (progress signal not received, "
                           "may have completed before tracking started)")
 
             if verbose:
-                print("  [ccle-re] requesting $ccle/dumpTypes...")
+                print("  [ccls-re] requesting $ccls/dumpTypes...")
 
-            response = client.ccle_dump_types(
+            response = client.ccls_dump_types(
                 namespaces=["RE", "REX", "REL"],
                 include_prefix=re_include.replace("\\", "/"),
             )
@@ -667,7 +659,7 @@ def collect_types(
             _convert_typedefs(raw_typedefs, enums, structs)
 
             if verbose:
-                print(f"  [ccle-re] collected {len(enums)} enums, {len(structs)} structs")
+                print(f"  [ccls-re] collected {len(enums)} enums, {len(structs)} structs")
 
         finally:
             client.close()

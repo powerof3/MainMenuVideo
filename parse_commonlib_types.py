@@ -4,10 +4,10 @@ Parse CommonLibSSE headers and generate Ghidra import scripts that create
 struct/class/enum type definitions with function symbols and relocations.
 
 Run with: py parse_commonlib_types.py
-Requires: ccle-re (language server), clang.exe for relocation scanning.
+Requires: ccls-re (language server), clang.exe for relocation scanning.
 
 Pipeline:
-  Types:        ccle_client via ccle-re $ccle/dumpTypes
+  Types:        ccle_client via ccls-re $ccls/dumpTypes
   Relocations:  clang_ast_reloc via clang.exe JSON AST
   Templates:    clangd_template_layouts via clang.exe -fdump-record-layouts
 """
@@ -1529,7 +1529,7 @@ def _flatten_structs(structs):
     print('Flattening: {} structs have field data after inheritance expansion'.format(gained))
 
 
-def run_version(version, symbols_json, fallback_symbols_json='[]'):
+def run_version(version, symbols_json, fallback_symbols_json='[]', ccls_binary=None):
     cfg = VERSIONS[version]
     output_path = cfg['output']
     parse_args = PARSE_ARGS_BASE + cfg['defines']
@@ -1540,9 +1540,9 @@ def run_version(version, symbols_json, fallback_symbols_json='[]'):
         print('ERROR: Could not find Skyrim.h at', SKYRIM_H)
         sys.exit(1)
 
-    print('Collecting types via ccle-re ($ccle/dumpTypes)...')
+    print('Collecting types via ccls-re ($ccls/dumpTypes)...')
     import ccle_client as _cac
-    enums, structs = _cac.collect_types(SKYRIM_H, parse_args, RE_INCLUDE, verbose=True)
+    enums, structs = _cac.collect_types(SKYRIM_H, parse_args, RE_INCLUDE, verbose=True, ccls_binary=ccls_binary)
     print('Found {} enums, {} structs/classes'.format(len(enums), len(structs)))
 
     vtable_structs = _build_vtable_structs(structs)
@@ -1609,7 +1609,9 @@ def main():
     import argparse
 
     ap = argparse.ArgumentParser(description='Parse CommonLibSSE and generate Ghidra import script')
-    ap.parse_args()
+    ap.add_argument('--ccls-re', metavar='PATH',
+                    help='Path to ccls-re binary (default: search PATH)')
+    args = ap.parse_args()
 
     # Load address databases (binary data, not source scanning)
     addr_lib = AddressLibrary()
@@ -1804,7 +1806,7 @@ def main():
 
     for version in ('se', 'ae'):
         fb_json = se_fallback_json if version == 'se' else ae_fallback_json
-        run_version(version, symbols_json, fb_json)
+        run_version(version, symbols_json, fb_json, ccls_binary=args.ccls_re)
 
 
 if __name__ == '__main__':
