@@ -372,6 +372,8 @@ def _convert_enums(raw_enums: List[dict]) -> Dict[str, dict]:
 
         # Determine size from underlyingType or the explicit size field
         size = e.get("size", 4)
+        if size <= 0:
+            size = 4
         underlying = e.get("underlyingType", "")
         if underlying:
             prim_size = _PRIM_SIZES.get(underlying.strip())
