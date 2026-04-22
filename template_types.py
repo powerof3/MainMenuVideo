@@ -41,7 +41,7 @@ Notes
 - Template instantiation *layout* is not resolved here; all discovered
   instantiations are treated as opaque structs (unknown size).  Actual field
   data for fully-instantiated templates (e.g. ``NiPointer<T>`` which is just
-  ``T *``) could be a future enhancement via libclang.
+  ``T *``) could be a future enhancement via ccls-re.
 - Only identifiers beginning with an ASCII letter or underscore trigger
   extraction; numeric non-type parameters (e.g. the ``6`` in
   ``BSTSmallArray<T, 6>``) appear verbatim in the sanitized name.

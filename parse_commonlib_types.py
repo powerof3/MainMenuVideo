@@ -3,13 +3,12 @@
 Parse CommonLibSSE headers and generate Ghidra import scripts that create
 struct/class/enum type definitions with function symbols and relocations.
 
-Run with: py parse_commonlib_types.py [--ccls-re PATH]
-Requires: ccls-re (language server), pdbparse.
+Run with: python parse_commonlib_types.py --ccls-re PATH
 
 Pipeline:
-  Types:        ccle_client via ccls-re $ccls/dumpTypes
-  Relocations:  reloc_parser (regex-based, single-pass SE+AE)
-  PDB symbols:  pdbparse (SkyrimSE.pdb public function names)
+  Types:        ccle_client.py via ccls-re $ccls/dumpTypes
+  Relocations:  reloc_parser.py (regex-based, single-pass SE+AE)
+  PDB symbols:  pdbparse (extras/SkyrimSE.pdb public function names, fallback)
 """
 
 import os
@@ -1258,14 +1257,8 @@ def _build_vtable_structs(structs):
 
     def _primary_base_st(st):
         """Return the struct dict for the primary base (offset-0 base), or None."""
-        pdb_bases = st.get('pdb_bases', [])
-        if pdb_bases:
-            primary_name, primary_off = pdb_bases[0]
-            if primary_off == 0:
-                return by_name.get(primary_name) or by_name.get(primary_name.split('::')[-1])
-        else:
-            for base_ref in st.get('bases', []):
-                return by_name.get(base_ref) or by_name.get(base_ref.split('::')[-1])
+        for base_ref in st.get('bases', []):
+            return by_name.get(base_ref) or by_name.get(base_ref.split('::')[-1])
         return None
 
     def get_slots(full_name, depth=0):
@@ -1519,8 +1512,7 @@ def _flatten_structs(structs):
     In-place: for every struct, expand base class fields into the derived struct
     so the final field list covers the entire layout at absolute byte offsets.
 
-    Uses pdb_bases ([(base_name, base_offset)]) when available for accurate
-    base placement; falls back to assuming first base starts at offset 0.
+    Assumes first base starts at offset 0 (primary base chain).
     """
     # Build name → struct entry lookup
     by_name = {}
@@ -1546,34 +1538,15 @@ def _flatten_structs(structs):
 
         combined = {}  # offset → field dict  (own fields take priority)
 
-        # --- Determine base class placements ---
-        pdb_bases = st.get('pdb_bases', [])  # [(base_name, base_offset)] from PDB
-
-        if pdb_bases:
-            # PDB gave us exact offsets for each base
-            for base_name, base_off in pdb_bases:
-                base_st = by_name.get(base_name) or by_name.get(base_name.split('::')[-1])
-                if not base_st:
-                    continue
-                for f in get_flat(base_st['full_name'], depth + 1):
-                    abs_off = base_off + f['offset']
-                    if abs_off not in combined:
-                        field_copy = dict(f, offset=abs_off)
-                        # Secondary vtable pointers (base placed at non-zero offset):
-                        # rename __vftable → __vftable_BaseName so they're identifiable
-                        if f['name'] == '__vftable' and base_off > 0:
-                            field_copy['name'] = '__vftable_' + base_st['name']
-                        combined[abs_off] = field_copy
-        else:
-            # No PDB base info — assume single base at offset 0
-            for base_ref in st.get('bases', []):
-                base_st = by_name.get(base_ref) or by_name.get(base_ref.split('::')[-1])
-                if not base_st or base_st['size'] <= 1:
-                    continue
-                for f in get_flat(base_st['full_name'], depth + 1):
-                    if f['offset'] not in combined:
-                        combined[f['offset']] = f
-                break  # only first base without offset info
+        # Assume first base at offset 0 (primary base chain)
+        for base_ref in st.get('bases', []):
+            base_st = by_name.get(base_ref) or by_name.get(base_ref.split('::')[-1])
+            if not base_st or base_st['size'] <= 1:
+                continue
+            for f in get_flat(base_st['full_name'], depth + 1):
+                if f['offset'] not in combined:
+                    combined[f['offset']] = f
+            break  # only first base without offset info
 
         # --- Own fields (override base at same offset) ---
         for f in st['fields']:
