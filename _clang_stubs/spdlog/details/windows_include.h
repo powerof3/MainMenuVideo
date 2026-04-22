@@ -1,5 +1,4 @@
 #pragma once
-// Wrapper: include real windows.h then undefine all REX::W32 macro name conflicts
 #ifndef NOMINMAX
 #define NOMINMAX
 #endif

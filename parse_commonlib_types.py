@@ -3,20 +3,19 @@
 Parse CommonLibSSE headers and generate Ghidra import scripts that create
 struct/class/enum type definitions with function symbols and relocations.
 
-Run with: py parse_commonlib_types.py
-Requires: ccls-re (language server), clang.exe for relocation scanning.
+Run with: py parse_commonlib_types.py [--ccls-re PATH]
+Requires: ccls-re (language server), pdbparse.
 
 Pipeline:
   Types:        ccle_client via ccls-re $ccls/dumpTypes
-  Relocations:  clang_ast_reloc via clang.exe JSON AST
-  Templates:    clangd_template_layouts via clang.exe -fdump-record-layouts
+  Relocations:  reloc_parser (regex-based, single-pass SE+AE)
+  PDB symbols:  pdbparse (SkyrimSE.pdb public function names)
 """
 
 import os
 import sys
 import re
 import struct
-import math
 import ctypes
 
 # ---------------------------------------------------------------------------
@@ -95,94 +94,31 @@ def _undecorate(name):
 
 
 def load_se_pdb_names(file_path):
-    """Parse a PDB (MSF7) file and return dict of rva -> name for all public function symbols."""
+    """Parse a PDB file and return dict of rva -> name for all public function symbols."""
     if not os.path.exists(file_path):
         return {}
 
-    with open(file_path, 'rb') as f:
-        data = f.read()
+    import pdbparse
 
-    if not data.startswith(b'Microsoft C/C++ MSF 7.00\r\n\x1aDS\x00\x00\x00'):
-        return {}
+    pdb = pdbparse.parse(file_path)
+    dbi = pdb.STREAM_DBI
+    gsym = pdb.streams[dbi.DBIHeader.symrecStream]
 
-    # MSF superblock
-    page_size = struct.unpack_from('<I', data, 32)[0]
-    dir_size  = struct.unpack_from('<I', data, 44)[0]
-    blk_map   = struct.unpack_from('<I', data, 52)[0]
+    sec_data = pdb.streams[dbi.DBIDbgHeader.snSectionHdr].data
+    sections = [struct.unpack_from('<I', sec_data, i * 40 + 12)[0]
+                for i in range(len(sec_data) // 40)]
 
-    # Stream directory
-    n_dir_pages = math.ceil(dir_size / page_size)
-    dir_page_list = struct.unpack_from(f'<{n_dir_pages}I', data, blk_map * page_size)
-    dir_data = b''.join(data[p * page_size:(p + 1) * page_size] for p in dir_page_list)[:dir_size]
-
-    n_streams = struct.unpack_from('<I', dir_data, 0)[0]
-    sizes = struct.unpack_from(f'<{n_streams}I', dir_data, 4)
-
-    o = 4 + n_streams * 4
-    stream_pages = []
-    for sz in sizes:
-        if sz == 0 or sz == 0xFFFFFFFF:
-            stream_pages.append([])
-        else:
-            np = math.ceil(sz / page_size)
-            stream_pages.append(list(struct.unpack_from(f'<{np}I', dir_data, o)))
-            o += np * 4
-
-    def read_stream(idx):
-        if idx >= n_streams or sizes[idx] in (0, 0xFFFFFFFF):
-            return b''
-        return b''.join(data[p * page_size:(p + 1) * page_size] for p in stream_pages[idx])[:sizes[idx]]
-
-    # DBI stream (stream 3)
-    dbi = read_stream(3)
-    if len(dbi) < 64:
-        return {}
-
-    (_, _, _,
-     _, _,
-     _, _,
-     sym_rec_idx, _,
-     mod_sz, sec_contrib_sz, sec_map_sz, src_sz, type_srv_sz, _,
-     opt_dbg_sz, ec_sz,
-     _, _, _) = struct.unpack_from('<iIIHHHHHHiiiiiIiiHHI', dbi)
-
-    # Section headers stream index (offset 10 within optional debug header)
-    opt_off = 64 + mod_sz + sec_contrib_sz + sec_map_sz + src_sz + type_srv_sz + ec_sz
-    sec_hdr_idx = struct.unpack_from('<H', dbi, opt_off + 10)[0] if opt_dbg_sz >= 12 else 0xFFFF
-
-    # Section virtual addresses (needed to convert seg:off -> RVA)
-    sections = []
-    if sec_hdr_idx != 0xFFFF:
-        sec_data = read_stream(sec_hdr_idx)
-        sections = [struct.unpack_from('<I', sec_data, i * 40 + 12)[0] for i in range(len(sec_data) // 40)]
-
-    # Parse symbol records stream for S_PUB32 (public function) records
-    sym_data = read_stream(sym_rec_idx)
-    S_PUB32 = 0x110E
     result = {}
-    o = 0
-    while o + 4 <= len(sym_data):
-        rec_len, rec_typ = struct.unpack_from('<HH', sym_data, o)
-        rec_end = o + 2 + rec_len
-        if rec_len < 2 or rec_end > len(sym_data):
-            break
-        if rec_typ == S_PUB32 and rec_end >= o + 14:
-            pub_flags, off, seg = struct.unpack_from('<IIH', sym_data, o + 4)
-            if pub_flags & 0x2 and 1 <= seg <= len(sections):
-                nul = sym_data.find(b'\x00', o + 14, rec_end)
-                if nul != -1:
-                    name = sym_data[o + 14:nul].decode('ascii', errors='replace')
-                    if name.startswith('?'):
-                        name = _undecorate(name)
-                    if re.match(r'^FUN_[0-9A-Fa-f]+$', name):
-                        o = rec_end
-                        continue
-                    # Strip embedded full-address suffix (e.g. WriteToSaveGame_1404D62A0)
-                    name = re.sub(r'_14[0-9A-Fa-f]{6,8}$', '', name)
-                    # Replace __ namespace separator with ::
-                    name = re.sub(r':{3,}', '::', name.replace('__', '::'))
-                    result[sections[seg - 1] + off] = name
-        o = rec_end
+    for name, rec in gsym.funcs.items():
+        if not (rec.symtype & 0x2) or not (1 <= rec.segment <= len(sections)):
+            continue
+        if name.startswith('?'):
+            name = _undecorate(name)
+        if re.match(r'^FUN_[0-9A-Fa-f]+$', name):
+            continue
+        name = re.sub(r'_14[0-9A-Fa-f]{6,8}$', '', name)
+        name = re.sub(r':{3,}', '::', name.replace('__', '::'))
+        result[sections[rec.segment - 1] + rec.offset] = name
 
     return result
 
@@ -224,26 +160,8 @@ VERSIONS = {
 }
 
 
-_TMPL_WS_RE = re.compile(r'\s+(?=[>,])|(?<=[<,])\s+')
-
-def _norm_tmpl(s):
-    """Normalise C++ template type name whitespace for consistent key matching.
-
-    DIA produces 'Type >' (space before '>') while libclang canonical spellings
-    use 'Type>, NextType' (space after ',').  Removing both variants gives a
-    single canonical form for dict key lookups.
-    """
-    return _TMPL_WS_RE.sub('', s) if s else s
-
-
-
-# Third-party include directory for headers required by CommonLibSSE PCH
-# (binary_io, spdlog).  Without these, PCH.h triggers a fatal error that
-# aborts parsing and prevents libclang from instantiating templates — causing
-# ~1300 structs (TESForm and all descendants) to report size=1.
-#
-# Prefer real vcpkg-installed headers ($VCPKG_ROOT/installed/x64-windows/include);
-# fall back to minimal stubs generated in _clang_stubs/ if vcpkg is unavailable.
+# Stub headers for third-party deps required by CommonLibSSE PCH (binary_io,
+# spdlog).  ccls-re's built-in clang needs these to avoid fatal parse errors.
 _VCPKG_INCLUDE = None
 _vcpkg_root = os.environ.get('VCPKG_ROOT', '')
 if _vcpkg_root:
@@ -257,7 +175,6 @@ if _vcpkg_root:
 if _VCPKG_INCLUDE:
     _THIRD_PARTY_INCLUDE = _VCPKG_INCLUDE
 else:
-    # Generate minimal stubs so parsing doesn't fatal-error
     _STUB_DIR = os.path.join(SCRIPT_DIR, '_clang_stubs')
     os.makedirs(os.path.join(_STUB_DIR, 'binary_io'), exist_ok=True)
     os.makedirs(os.path.join(_STUB_DIR, 'spdlog'), exist_ok=True)
@@ -274,16 +191,8 @@ else:
 
     _THIRD_PARTY_INCLUDE = _STUB_DIR
 
-# <windows.h> (pulled in by spdlog/details/windows_include.h) defines macros
-# with identical names to REX::W32 constexpr variables (CP_UTF8, MAX_PATH,
-# MEM_RELEASE, IMAGE_SCN_MEM_EXECUTE, …).  When libclang sees REX::W32::CP_UTF8
-# it macro-expands CP_UTF8 → 65001, producing REX::W32::65001 which is an
-# "expected unqualified-id" error.
-#
-# Fix: shadow spdlog/details/windows_include.h with a wrapper that includes the
-# real <windows.h> and then #undefs every name that REX::W32 redeclares as a
-# constexpr variable.  This gives spdlog its Windows types while keeping the
-# REX::W32 namespace free of conflicting preprocessor macros.
+# Shadow spdlog/details/windows_include.h to undefine Windows macros that
+# conflict with REX::W32 constexpr variables.
 _rex_w32_constexpr_names = []
 for _root, _dirs, _files in os.walk(os.path.join(COMMONLIB_INCLUDE, 'REX', 'W32')):
     for _fname in _files:
@@ -300,21 +209,13 @@ for _root, _dirs, _files in os.walk(os.path.join(COMMONLIB_INCLUDE, 'REX', 'W32'
 _WIN_STUB_DIR = os.path.join(SCRIPT_DIR, '_clang_stubs')
 os.makedirs(os.path.join(_WIN_STUB_DIR, 'spdlog', 'details'), exist_ok=True)
 os.makedirs(os.path.join(_WIN_STUB_DIR, 'spdlog', 'sinks'), exist_ok=True)
-_win_inc_stub = os.path.join(_WIN_STUB_DIR, 'spdlog', 'details', 'windows_include.h')
-# spdlog/sinks/wincolor_sink-inl.h uses INVALID_HANDLE_VALUE directly as a macro.
-# Stub it empty so we can safely undef INVALID_HANDLE_VALUE to prevent
-# REX::W32::INVALID_HANDLE_VALUE from being macro-expanded in CommonLibSSE headers.
 with open(os.path.join(_WIN_STUB_DIR, 'spdlog', 'sinks', 'wincolor_sink-inl.h'), 'w') as _f:
     _f.write('#pragma once\n')
-# Also undefine Windows SDK function-like macros that shadow REX::W32 functions:
-# IMAGE_FIRST_SECTION: complex pointer macro in winnt.h, redeclared inline in KERNEL32.h
-# IMAGE_SNAP_BY_ORDINAL64: function-like macro in winnt.h, shadows REX::W32 inline function
-_EXTRA_MACRO_UNDEFS = ['IMAGE_FIRST_SECTION', 'IMAGE_SNAP_BY_ORDINAL64']
-_undef_block = '\n'.join('#undef ' + _n for _n in _rex_w32_constexpr_names + _EXTRA_MACRO_UNDEFS)
-with open(_win_inc_stub, 'w') as _f:
+_undef_block = '\n'.join('#undef ' + _n for _n in _rex_w32_constexpr_names
+                         + ['IMAGE_FIRST_SECTION', 'IMAGE_SNAP_BY_ORDINAL64'])
+with open(os.path.join(_WIN_STUB_DIR, 'spdlog', 'details', 'windows_include.h'), 'w') as _f:
     _f.write(
         '#pragma once\n'
-        '// Wrapper: include real windows.h then undefine all REX::W32 macro name conflicts\n'
         '#ifndef NOMINMAX\n#define NOMINMAX\n#endif\n'
         '#ifndef WIN32_LEAN_AND_MEAN\n#define WIN32_LEAN_AND_MEAN\n#endif\n'
         '#include <windows.h>\n'
@@ -327,19 +228,10 @@ PARSE_ARGS_BASE = [
     '-fms-compatibility',
     '-fms-extensions',
     '-DWIN32', '-D_WIN64',
-    '-D_ALLOW_COMPILER_AND_STL_VERSION_MISMATCH',  # suppress STL1000 clang version check
-    # MSVC's ucrt/stddef.h defines offsetof as a reinterpret_cast expression, which
-    # is not constexpr, causing static_assert(offsetof(...)==N) to fail as
-    # "not an integral constant expression".  _CRT_USE_BUILTIN_OFFSETOF makes
-    # stddef.h use __builtin_offsetof instead, which is always constexpr in clang.
     '-D_CRT_USE_BUILTIN_OFFSETOF',
-    # spdlog/common.h defines SPDLOG_HEADER_ONLY (and includes all -inl.h files) unless
-    # SPDLOG_COMPILED_LIB is set.  wincolor_sink-inl.h uses INVALID_HANDLE_VALUE as a
-    # raw macro, conflicting with our undef.  Pretend spdlog is a compiled library so
-    # none of the inl files are pulled in.
     '-DSPDLOG_COMPILED_LIB',
-    '-I' + _WIN_STUB_DIR,                          # shadow spdlog/details/windows_include.h
-    '-isystem', _THIRD_PARTY_INCLUDE,              # binary_io/spdlog (vcpkg or stubs)
+    '-I' + _WIN_STUB_DIR,
+    '-isystem', _THIRD_PARTY_INCLUDE,
     '-I' + COMMONLIB_INCLUDE,
 ]
 
@@ -1009,14 +901,23 @@ def _import_vtable_names():
     memory = currentProgram.getMemory()
     ptr_size = currentProgram.getDefaultPointerSize()
     named_vfuncs = 0
+    vtbl_not_found = 0
+    vtbl_found = 0
+    read_fail = 0
+    no_func = 0
+    already_named = 0
     for vt in VTABLES:
         vname, class_full_name, vtbl_size, category, slots = vt
         class_short = class_full_name.split('::')[-1]
         vtbl_label = 'VTABLE_' + class_short
         vtbl_syms = list(sym_table.getSymbols(vtbl_label))
         if not vtbl_syms:
+            vtbl_not_found += 1
             continue
+        vtbl_found += 1
         vtbl_addr = vtbl_syms[0].getAddress()
+        if vtbl_found <= 3:
+            print('  DIAG vtbl: {} @ {}'.format(vtbl_label, vtbl_addr))
         for slot_off, slot_name, slot_ret, slot_params in slots:
             if slot_name.startswith('fn_'):
                 continue
@@ -1028,15 +929,19 @@ def _import_vtable_names():
                         raw = raw + (1 << 64)
                 else:
                     raw = memory.getInt(ptr_addr) & 0xFFFFFFFF
+                if vtbl_found <= 3 and slot_off <= 16:
+                    print('    DIAG slot +0x{:X}: raw=0x{:X}'.format(slot_off, raw))
                 func_addr = currentProgram.getAddressFactory().getDefaultAddressSpace().getAddress(raw)
                 func = fm.getFunctionAt(func_addr)
                 if not func:
                     DisassembleCommand(func_addr, None, True).applyTo(currentProgram)
                     func = fm.getFunctionAt(func_addr)
                 if not func:
+                    no_func += 1
                     continue
                 curr = func.getName()
                 if not (curr.startswith('FUN_') or curr.startswith('sub_')):
+                    already_named += 1
                     continue
                 func.setName(class_short + '::' + slot_name, SourceType.USER_DEFINED)
                 cu = currentProgram.getListing().getCodeUnitAt(func_addr)
@@ -1066,9 +971,13 @@ def _import_vtable_names():
                     except Exception:
                         pass
                 named_vfuncs += 1
-            except Exception:
-                pass
+            except Exception as _e:
+                read_fail += 1
+                if read_fail <= 3:
+                    print('    DIAG exception: {}'.format(str(_e)[:200]))
     print('Named {} virtual functions from vtable addresses'.format(named_vfuncs))
+    print('  DIAG: vtbl_found={} vtbl_not_found={} read_fail={} no_func={} already_named={}'.format(
+        vtbl_found, vtbl_not_found, read_fail, no_func, already_named))
 
     # --- Second pass: walk VTABLE_ labels that have no struct definition ---
     # These are VTABLE_ symbols created by _import_symbols() but not in VTABLES.
@@ -1407,7 +1316,7 @@ def _build_vtable_structs(structs):
                 if off not in all_slots:
                     all_slots[off] = 'fn_{:03X}'.format(off)
         # Build sorted slots as 4-tuples: (offset, name, ret_type, params)
-        # ret_type and params come from libclang signature data; None if unknown.
+        # ret_type and params come from ccls-re method data; None if unknown.
         sigs = get_sigs(st['full_name'])
         sorted_slots = []
         for off, name in sorted(all_slots.items()):
@@ -1450,6 +1359,142 @@ def _inject_vtable_fields(structs, vtable_structs):
         })
         count += 1
     print('Injected vtable pointer fields into {} structs'.format(count))
+
+
+_KNOWN_TEMPLATE_LAYOUTS = {
+    'NiPointer': (8, [{'name': '_ptr', 'type': 'ptr', 'offset': 0, 'size': 8}]),
+    'BSTSmartPointer': (8, [{'name': '_ptr', 'type': 'ptr', 'offset': 0, 'size': 8}]),
+    'hkRefPtr': (8, [{'name': '_ptr', 'type': 'ptr', 'offset': 0, 'size': 8}]),
+    'GPtr': (8, [{'name': '_ptr', 'type': 'ptr', 'offset': 0, 'size': 8}]),
+    'BSTArray': (0x18, [
+        {'name': '_data', 'type': 'ptr', 'offset': 0, 'size': 8},
+        {'name': '_capacity', 'type': 'u32', 'offset': 8, 'size': 4},
+        {'name': '_size', 'type': 'u32', 'offset': 0x10, 'size': 4},
+    ]),
+    'BSScrapArray': (0x20, [
+        {'name': '_allocator', 'type': 'ptr', 'offset': 0, 'size': 8},
+        {'name': '_data', 'type': 'ptr', 'offset': 8, 'size': 8},
+        {'name': '_capacity', 'type': 'u32', 'offset': 0x10, 'size': 4},
+        {'name': '_size', 'type': 'u32', 'offset': 0x18, 'size': 4},
+    ]),
+    'hkArray': (0x10, [
+        {'name': '_data', 'type': 'ptr', 'offset': 0, 'size': 8},
+        {'name': '_size', 'type': 'i32', 'offset': 8, 'size': 4},
+        {'name': '_capacityAndFlags', 'type': 'i32', 'offset': 0xC, 'size': 4},
+    ]),
+    'BSTHashMap': (0x30, [
+        {'name': '_pad00', 'type': 'u64', 'offset': 0, 'size': 8},
+        {'name': '_pad08', 'type': 'u32', 'offset': 8, 'size': 4},
+        {'name': '_capacity', 'type': 'u32', 'offset': 0xC, 'size': 4},
+        {'name': '_free', 'type': 'u32', 'offset': 0x10, 'size': 4},
+        {'name': '_good', 'type': 'u32', 'offset': 0x14, 'size': 4},
+        {'name': '_sentinel', 'type': 'ptr', 'offset': 0x18, 'size': 8},
+        {'name': '_allocPad', 'type': 'u64', 'offset': 0x20, 'size': 8},
+        {'name': '_entries', 'type': 'ptr', 'offset': 0x28, 'size': 8},
+    ]),
+    'BSTScrapHashMap': (0x30, [
+        {'name': '_pad00', 'type': 'u64', 'offset': 0, 'size': 8},
+        {'name': '_pad08', 'type': 'u32', 'offset': 8, 'size': 4},
+        {'name': '_capacity', 'type': 'u32', 'offset': 0xC, 'size': 4},
+        {'name': '_free', 'type': 'u32', 'offset': 0x10, 'size': 4},
+        {'name': '_good', 'type': 'u32', 'offset': 0x14, 'size': 4},
+        {'name': '_sentinel', 'type': 'ptr', 'offset': 0x18, 'size': 8},
+        {'name': '_allocator', 'type': 'ptr', 'offset': 0x20, 'size': 8},
+        {'name': '_entries', 'type': 'ptr', 'offset': 0x28, 'size': 8},
+    ]),
+    'BSTSet': (0x30, [
+        {'name': '_pad00', 'type': 'u64', 'offset': 0, 'size': 8},
+        {'name': '_pad08', 'type': 'u32', 'offset': 8, 'size': 4},
+        {'name': '_capacity', 'type': 'u32', 'offset': 0xC, 'size': 4},
+        {'name': '_free', 'type': 'u32', 'offset': 0x10, 'size': 4},
+        {'name': '_good', 'type': 'u32', 'offset': 0x14, 'size': 4},
+        {'name': '_sentinel', 'type': 'ptr', 'offset': 0x18, 'size': 8},
+        {'name': '_allocPad', 'type': 'u64', 'offset': 0x20, 'size': 8},
+        {'name': '_entries', 'type': 'ptr', 'offset': 0x28, 'size': 8},
+    ]),
+    'BSSimpleList': (0x10, [
+        {'name': '_item', 'type': 'ptr', 'offset': 0, 'size': 8},
+        {'name': '_next', 'type': 'ptr', 'offset': 8, 'size': 8},
+    ]),
+    'BSTEventSource': (0x58, [
+        {'name': '_sinks_data', 'type': 'ptr', 'offset': 0, 'size': 8},
+        {'name': '_sinks_capacity', 'type': 'u32', 'offset': 8, 'size': 4},
+        {'name': '_sinks_size', 'type': 'u32', 'offset': 0x10, 'size': 4},
+        {'name': '_pendReg_data', 'type': 'ptr', 'offset': 0x18, 'size': 8},
+        {'name': '_pendReg_capacity', 'type': 'u32', 'offset': 0x20, 'size': 4},
+        {'name': '_pendReg_size', 'type': 'u32', 'offset': 0x28, 'size': 4},
+        {'name': '_pendUnreg_data', 'type': 'ptr', 'offset': 0x30, 'size': 8},
+        {'name': '_pendUnreg_capacity', 'type': 'u32', 'offset': 0x38, 'size': 4},
+        {'name': '_pendUnreg_size', 'type': 'u32', 'offset': 0x40, 'size': 4},
+        {'name': '_lock', 'type': 'u64', 'offset': 0x48, 'size': 8},
+        {'name': '_notifying', 'type': 'u8', 'offset': 0x50, 'size': 1},
+    ]),
+    'NiTMap': (0x28, [
+        {'name': '__vftable', 'type': 'ptr', 'offset': 0, 'size': 8},
+        {'name': '_numBuckets', 'type': 'u32', 'offset': 8, 'size': 4},
+        {'name': '_hashTable', 'type': 'ptr', 'offset': 0x10, 'size': 8},
+        {'name': '_count', 'type': 'u32', 'offset': 0x18, 'size': 4},
+    ]),
+    'NiTPrimitiveArray': (0x18, [
+        {'name': '__vftable', 'type': 'ptr', 'offset': 0, 'size': 8},
+        {'name': '_data', 'type': 'ptr', 'offset': 8, 'size': 8},
+        {'name': '_capacity', 'type': 'u16', 'offset': 0x10, 'size': 2},
+        {'name': '_freeIdx', 'type': 'u16', 'offset': 0x12, 'size': 2},
+        {'name': '_size', 'type': 'u16', 'offset': 0x14, 'size': 2},
+        {'name': '_growthSize', 'type': 'u16', 'offset': 0x16, 'size': 2},
+    ]),
+    'SimpleArray': (0x10, [
+        {'name': '_data', 'type': 'ptr', 'offset': 0, 'size': 8},
+        {'name': '_size', 'type': 'u32', 'offset': 8, 'size': 4},
+    ]),
+    'GArray': (0x18, [
+        {'name': '__vftable', 'type': 'ptr', 'offset': 0, 'size': 8},
+        {'name': '_data', 'type': 'ptr', 'offset': 8, 'size': 8},
+        {'name': '_size', 'type': 'u32', 'offset': 0x10, 'size': 4},
+    ]),
+    'hkSmallArray': (0x10, [
+        {'name': '_data', 'type': 'ptr', 'offset': 0, 'size': 8},
+        {'name': '_size', 'type': 'u16', 'offset': 8, 'size': 2},
+        {'name': '_capacityAndFlags', 'type': 'u16', 'offset': 0xA, 'size': 2},
+    ]),
+}
+
+
+def _apply_known_template_layouts(structs, enums):
+    """Patch template base types and instantiation aliases with known layouts.
+
+    Template instantiation aliases have sanitized names like NiPointer_BSTriShape,
+    BSTArray_TESForm_ptr, RE_BSTHashMap_RE_FormID_RE_TESForm_ptr, etc.
+    We extract the base template name and apply the known fixed-size layout.
+    """
+    patched = 0
+    for sname, st in structs.items():
+        if st['size'] > 1 and st['fields']:
+            continue
+        key = sname
+        for prefix in ('RE::', 'RE_', 'REX::', 'REX_'):
+            if key.startswith(prefix):
+                key = key[len(prefix):]
+                break
+        if '<' in key:
+            base = key.split('<')[0]
+        elif '_' in key:
+            base = key.split('_')[0]
+        else:
+            base = key
+        if base == 'EnumSet' or sname in ('REX::EnumSet', 'EnumSet'):
+            st['size'] = 4
+            st['fields'] = [{'name': '_impl', 'type': 'u32', 'offset': 0, 'size': 4}]
+            patched += 1
+            continue
+        if base in _KNOWN_TEMPLATE_LAYOUTS:
+            size, fields = _KNOWN_TEMPLATE_LAYOUTS[base]
+            st['size'] = size
+            st['fields'] = [dict(f) for f in fields]
+            patched += 1
+
+    if patched:
+        print('Applied known template layouts to {} struct(s)'.format(patched))
 
 
 def _flatten_structs(structs):
@@ -1557,42 +1602,18 @@ def run_version(version, symbols_json, fallback_symbols_json='[]', ccls_binary=N
         _tmpl = _process_templates(structs)
         template_source = _tmpl.combined_source()
 
-        # Pre-compute clangd layouts for all template instantiations.
-        _tmpl_clangd_layouts: dict = {}
-        try:
-            from clangd_template_layouts import (
-                extract_layouts as _clangd_extract,
-                find_clang_binary as _find_clang,
-            )
-            _clang_bin = _find_clang()
-            if _clang_bin:
-                _all_orig_names = [_norm_tmpl(o) for o in _tmpl.template_map]
-                print('  [clangd] Extracting layouts for {} template types '
-                      'using {}...'.format(len(_all_orig_names),
-                                           os.path.basename(_clang_bin)))
-                _tmpl_clangd_layouts = _clangd_extract(
-                    _all_orig_names, parse_args, SKYRIM_H,
-                    clang_binary=_clang_bin)
-                _ok = sum(1 for sz, _ in _tmpl_clangd_layouts.values() if sz > 0)
-                print('  [clangd] Resolved {}/{} types'.format(
-                    _ok, len(_all_orig_names)))
-            else:
-                print('  [clangd] ERROR: clang binary not found')
-        except Exception as _e:
-            print('  [clangd] ERROR:', _e)
-
         for _orig, _display in _tmpl.template_map.items():
             if _display not in structs and _display not in enums:
-                _orig_n = _norm_tmpl(_orig)
-                _sz, _fields = _tmpl_clangd_layouts.get(_orig_n, (0, []))
-                structs[_display] = {'name': _display, 'full_name': _display, 'size': _sz,
-                                     'category': category, 'fields': _fields, 'bases': [],
+                structs[_display] = {'name': _display, 'full_name': _display, 'size': 0,
+                                     'category': category, 'fields': [], 'bases': [],
                                      'has_vtable': False}
         if _tmpl.template_map:
             print('Discovered {} template instantiation aliases'.format(len(_tmpl.template_map)))
 
     except ImportError:
         template_source = ''
+
+    _apply_known_template_layouts(structs, enums)
 
     if hasattr(_cac, 'resolve_deferred_typedef_aliases'):
         _n_extra = _cac.resolve_deferred_typedef_aliases(enums, structs, verbose=True)
@@ -1618,70 +1639,36 @@ def main():
     addr_lib.load_all(os.path.join(SCRIPT_DIR, 'addresslibrary'))
     print('SE entries: {}, AE entries: {}'.format(len(addr_lib.se_db), len(addr_lib.ae_db)))
 
-    print('\n=== Collecting symbols via clang.exe (JSON AST) ===')
-    se_func_syms = []
-    se_label_syms = []
-    ae_func_syms = []
-    ae_label_syms = []
-    se_offset_map = {}
-    ae_offset_map = {}
-    static_methods = set()
+    print('\n=== Collecting symbols via regex relocation parser ===')
+    import reloc_parser as _rp
 
-    import clang_ast_reloc as _car
+    func_syms, label_syms, offset_id_map, static_methods = _rp.collect_relocations(
+        RE_INCLUDE, addr_lib, verbose=True)
 
-    for version, is_ae in (('se', False), ('ae', True)):
-        cfg = VERSIONS[version]
-        parse_args = PARSE_ARGS_BASE + cfg['defines']
-        print('\n--- {} relocation scan ---'.format(version.upper()))
-        fs, ls, off_map, sm = _car.collect_relocations(
-            SKYRIM_H, parse_args, addr_lib, is_ae, verbose=True)
-        static_methods |= sm  # union of SE and AE static methods (same headers)
-        if is_ae:
-            ae_func_syms, ae_label_syms, ae_offset_map = fs, ls, off_map
-        else:
-            se_func_syms, se_label_syms, se_offset_map = fs, ls, off_map
-
-    # Parse src/ cpp files (unity build) for functions not in Skyrim.h
     src_dir = os.path.join(SCRIPT_DIR, 'extern', 'CommonLibSSE', 'src')
     if os.path.isdir(src_dir):
-        src_func_syms = _car.collect_src_relocations(
-            src_dir,
-            PARSE_ARGS_BASE + VERSIONS['se']['defines'],
-            PARSE_ARGS_BASE + VERSIONS['ae']['defines'],
-            addr_lib, se_offset_map, ae_offset_map, skyrim_h=SKYRIM_H,
-            verbose=True,
-        )
+        src_func_syms = _rp.collect_src_relocations(
+            src_dir, addr_lib, offset_id_map, verbose=True)
     else:
         src_func_syms = []
         print('  src/ dir not found, skipping')
 
-    # Merge RTTI/VTABLE labels — combine SE and AE offsets by name
     label_by_name = {}
-    for lbl in se_label_syms:
+    for lbl in label_syms:
         label_by_name.setdefault(lbl['name'], {'name': lbl['name'], 'se_off': None, 'ae_off': None})
-        label_by_name[lbl['name']]['se_off'] = lbl['se_off']
-    for lbl in ae_label_syms:
-        label_by_name.setdefault(lbl['name'], {'name': lbl['name'], 'se_off': None, 'ae_off': None})
-        label_by_name[lbl['name']]['ae_off'] = lbl['ae_off']
+        entry = label_by_name[lbl['name']]
+        if lbl.get('se_off'): entry['se_off'] = lbl['se_off']
+        if lbl.get('ae_off'): entry['ae_off'] = lbl['ae_off']
 
-    # AE parse gives both IDs for functions; SE parse also yields any SE-only functions
-    # Merge: prefer AE entries (have both IDs); add SE-only if not covered
-    seen_se = set(fs['se_off'] for fs in ae_func_syms if fs['se_off'])
-    seen_ae = set(fs['ae_off'] for fs in ae_func_syms if fs['ae_off'])
-    merged_funcs = list(ae_func_syms)
-    for fs in se_func_syms:
-        if fs['se_off'] and fs['se_off'] not in seen_se:
-            seen_se.add(fs['se_off'])
-            merged_funcs.append(fs)
-    # Correct static detection for src/ symbols using the header-derived static_methods set.
-    # A .cpp definition's StorageClass may be missing when the compiler cannot link it
-    # back to its (static) header declaration — fall back to the header-derived set.
+    merged_funcs = list(func_syms)
+    seen_se = set(fs['se_off'] for fs in merged_funcs if fs.get('se_off'))
+    seen_ae = set(fs['ae_off'] for fs in merged_funcs if fs.get('ae_off'))
+
     for fs in src_func_syms:
         if not fs.get('is_static') and fs.get('class_') and fs.get('name'):
             if (fs['class_'], fs['name']) in static_methods:
                 fs['is_static'] = True
 
-    # Add src/ symbols not already found via headers
     for fs in src_func_syms:
         se_off = fs.get('se_off')
         ae_off = fs.get('ae_off')

@@ -4,8 +4,7 @@ Launches ccls-re as a subprocess over stdio (JSON-RPC 2.0), performs the standar
 LSP handshake, then uses custom extension requests ($ccls/dumpTypes,
 $ccls/vtableLayout) to collect types, enums, structs, and vtable layouts.
 
-Relocation scanning (REL::Relocation<>) remains in clang_ast_reloc.py — it is
-game-specific logic that does not belong in the language server fork.
+Relocation scanning is handled separately by reloc_parser.py (regex-based).
 """
 
 from __future__ import annotations
@@ -18,8 +17,147 @@ import subprocess
 import threading
 from typing import Any, Dict, List, Optional, Tuple
 
-# Reuse the pipeline type-mapping utilities from the existing codebase.
-from clangd_template_layouts import _record_type_to_pipeline, _qualify_re
+# ---------------------------------------------------------------------------
+# Type-mapping utilities (C++ qualType → pipeline descriptor)
+# ---------------------------------------------------------------------------
+
+_PRIM_BARE = frozenset({
+    'void', 'bool', 'char', 'wchar_t', 'float', 'double', 'auto',
+    'short', 'int', 'long',
+    'signed', 'unsigned', '__int64', '__int32', '__int16', '__int8',
+    'nullptr_t',
+    'uint8_t',  'uint16_t',  'uint32_t',  'uint64_t',
+    'int8_t',   'int16_t',   'int32_t',   'int64_t',
+    'size_t', 'ptrdiff_t', 'uintptr_t', 'intptr_t',
+})
+
+_PRIM_ALL = _PRIM_BARE | frozenset({
+    'signed char', 'unsigned char',
+    'signed short', 'unsigned short',
+    'signed int',   'unsigned int',
+    'signed long',  'unsigned long',
+    'long long',    'signed long long', 'unsigned long long',
+    'long double',
+    'unsigned __int64', 'signed __int64',
+})
+
+_CLANG_TYPE_MAP: Dict[str, str] = {
+    'bool': 'bool',
+    'char': 'i8', 'signed char': 'i8', 'unsigned char': 'u8',
+    'short': 'i16', 'signed short': 'i16', 'unsigned short': 'u16',
+    'int': 'i32', 'signed int': 'i32', 'unsigned int': 'u32',
+    'long': 'i32', 'signed long': 'i32', 'unsigned long': 'u32',
+    'long long': 'i64', 'signed long long': 'i64', 'unsigned long long': 'u64',
+    '__int64': 'i64', 'unsigned __int64': 'u64',
+    'float': 'f32', 'double': 'f64',
+    'void': 'void',
+    'std::uint8_t': 'u8',  'uint8_t': 'u8',
+    'std::uint16_t': 'u16','uint16_t': 'u16',
+    'std::uint32_t': 'u32','uint32_t': 'u32',
+    'std::uint64_t': 'u64','uint64_t': 'u64',
+    'std::int8_t': 'i8',   'int8_t': 'i8',
+    'std::int16_t': 'i16', 'int16_t': 'i16',
+    'std::int32_t': 'i32', 'int32_t': 'i32',
+    'std::int64_t': 'i64', 'int64_t': 'i64',
+    'std::size_t': 'u64',  'size_t': 'u64',
+    'std::ptrdiff_t': 'i64','ptrdiff_t': 'i64',
+    'std::uintptr_t': 'u64','uintptr_t': 'u64',
+    'std::intptr_t': 'i64', 'intptr_t': 'i64',
+    'element_type': 'ptr', 'value_type': 'ptr',
+    'key_type': 'ptr', 'mapped_type': 'ptr',
+    'first_type': 'ptr', 'second_type': 'ptr', 'T': 'ptr',
+}
+
+_KW_RE = re.compile(r'\b(?:class|struct|union|enum)\s+')
+
+
+def _split_tmpl_args(inner: str) -> List[str]:
+    args: List[str] = []
+    depth = 0
+    start = 0
+    for i, ch in enumerate(inner):
+        if ch == '<':
+            depth += 1
+        elif ch == '>':
+            depth -= 1
+        elif ch == ',' and depth == 0:
+            args.append(inner[start:i].strip())
+            start = i + 1
+    tail = inner[start:].strip()
+    if tail:
+        args.append(tail)
+    return args
+
+
+def _qualify_re(name: str) -> str:
+    name = name.strip()
+    if not name:
+        return name
+
+    leading = ''
+    for q in ('const ', 'volatile '):
+        while name.startswith(q):
+            leading += q
+            name = name[len(q):]
+
+    trailing = ''
+    changed = True
+    while changed:
+        changed = False
+        for t in (' const', ' *', ' &', '*', '&'):
+            if name.endswith(t):
+                trailing = t + trailing
+                name = name[: -len(t)].rstrip()
+                changed = True
+                break
+
+    name = name.strip()
+
+    lt = name.find('<')
+    if lt >= 0 and name.endswith('>'):
+        outer = name[:lt].strip()
+        inner_str = name[lt + 1 : -1]
+        inner_args = _split_tmpl_args(inner_str)
+        qual_args = ', '.join(_qualify_re(a) for a in inner_args)
+        for pfx in ('RE::', 'REX::', 'REL::', 'std::', 'fmt::', 'WinAPI::', 'SKSE::'):
+            if outer.startswith(pfx):
+                return f'{leading}{outer}<{qual_args}>{trailing}'
+        if outer in _PRIM_BARE:
+            return f'{leading}{outer}<{qual_args}>{trailing}'
+        return f'{leading}RE::{outer}<{qual_args}>{trailing}'
+
+    if name in _PRIM_ALL:
+        return f'{leading}{name}{trailing}'
+
+    parts = name.split('::')
+    first = parts[0].strip()
+    if first in _PRIM_BARE or first in ('std', 'RE', 'REX', 'REL', 'WinAPI', 'SKSE', 'fmt'):
+        return f'{leading}{name}{trailing}'
+
+    return f'{leading}RE::{name}{trailing}'
+
+
+def _record_type_to_pipeline(raw: str) -> str:
+    raw = _KW_RE.sub('', raw.strip()).strip()
+
+    if raw.endswith('*') or raw.endswith('&'):
+        inner = _record_type_to_pipeline(raw[:-1].strip())
+        if inner.startswith('struct:') or inner.startswith('enum:'):
+            return 'ptr:' + inner
+        return 'ptr'
+
+    if raw in _CLANG_TYPE_MAP:
+        return _CLANG_TYPE_MAP[raw]
+
+    m_arr = re.match(r'^(.+)\[(\d+)\]$', raw)
+    if m_arr:
+        elem_type = _record_type_to_pipeline(m_arr.group(1).strip())
+        return f'arr:{elem_type}:{int(m_arr.group(2))}'
+
+    if raw:
+        return 'struct:' + _qualify_re(raw)
+    return 'ptr'
+
 
 # ---------------------------------------------------------------------------
 # Binary discovery
@@ -608,7 +746,7 @@ def collect_types(
                   bases: [full_name, ...], has_vtable: bool}}
 
     Uses ccls-re's $ccls/dumpTypes extension instead of spawning multiple
-    clang.exe JSON AST + record layout passes.
+    the old clang.exe-based pipeline.
     """
     import time as _time
 

@@ -176,13 +176,13 @@ with pyghidra.open_project(PROJECT_DIR, PROJECT_NAME, create=True) as project:
         print("\n--- Sanity checks ---")
         errors = []
         if named_funcs < 12000:
-            errors.append(f"Named functions too low: {named_funcs:,} (expected ≥12,000)")
+            errors.append(f"Named functions too low: {named_funcs:,} (expected >=12,000)")
         if enum_count < 550:
-            errors.append(f"Enum count too low: {enum_count} (expected ≥550)")
+            errors.append(f"Enum count too low: {enum_count} (expected >=550)")
         if struct_count < 4500:
-            errors.append(f"Struct count too low: {struct_count} (expected ≥4,500)")
+            errors.append(f"Struct count too low: {struct_count} (expected >=4,500)")
         if sym_count < 250000:
-            errors.append(f"Symbol count too low: {sym_count:,} (expected ≥250,000)")
+            errors.append(f"Symbol count too low: {sym_count:,} (expected >=250,000)")
         if not spot_ok:
             errors.append("One or more spot-checks failed (see above)")
 
