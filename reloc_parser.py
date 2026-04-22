@@ -135,11 +135,17 @@ def _scan_header_relocations(
     file_path: str,
     addr_lib,
     offset_id_map: Dict[str, int],
+    se_offset_map: Dict[str, int] = None,
+    ae_offset_map: Dict[str, int] = None,
 ) -> Tuple[List[dict], List[dict], Set[Tuple[str, str]]]:
     """Scan a single header file for REL::Relocation, RTTI, VTABLE declarations.
 
     Returns (func_syms, label_syms, static_methods).
     """
+    if se_offset_map is None:
+        se_offset_map = offset_id_map
+    if ae_offset_map is None:
+        ae_offset_map = offset_id_map
     func_syms: List[dict] = []
     label_syms: List[dict] = []
     static_methods: Set[Tuple[str, str]] = set()
@@ -215,12 +221,13 @@ def _scan_header_relocations(
             if not off_match:
                 continue
             offset_key = off_match.group(1)
-            the_id = offset_id_map.get(offset_key)
-            if the_id is None:
+            se_id = se_offset_map.get(offset_key)
+            ae_id = ae_offset_map.get(offset_key)
+            if se_id is None and ae_id is None:
                 continue
 
-            se_off = addr_lib.se_db.get(the_id)
-            ae_off = addr_lib.ae_db.get(the_id)
+            se_off = addr_lib.se_db.get(se_id) if se_id else None
+            ae_off = addr_lib.ae_db.get(ae_id) if ae_id else None
             if not se_off and not ae_off:
                 continue
 
@@ -239,39 +246,83 @@ def _scan_header_relocations(
     return func_syms, label_syms, static_methods
 
 
-def _scan_offsets_file(file_path: str) -> Dict[str, int]:
-    """Parse Offsets.h to build offset_id_map: 'Class::Method' → integer ID.
+def _scan_offsets_file(file_path: str) -> Tuple[Dict[str, int], Dict[str, int]]:
+    """Parse Offsets.h to build offset_id_maps: 'Class::Method' → integer ID.
 
-    Handles both SE and AE sections (ifdef SKYRIM_SUPPORT_AE).
-    Returns a merged map where AE IDs override SE IDs for same keys.
+    Handles #ifdef SKYRIM_SUPPORT_AE / #else / #endif sections.
+    Returns (se_offset_map, ae_offset_map).
     """
-    offset_map: Dict[str, int] = {}
-
     try:
         with open(file_path, encoding='utf-8', errors='replace') as f:
             content = f.read()
     except OSError:
-        return offset_map
+        return {}, {}
 
-    lines = content.split('\n')
+    has_ifdef = 'SKYRIM_SUPPORT_AE' in content
+
+    if has_ifdef:
+        lines = content.split('\n')
+        section = None
+        ae_lines = []
+        se_lines = []
+        for line in lines:
+            stripped = line.strip()
+            if stripped.startswith('#ifdef') and 'SKYRIM_SUPPORT_AE' in stripped:
+                section = 'ae'
+                continue
+            elif stripped.startswith('#else') and section == 'ae':
+                section = 'se'
+                continue
+            elif stripped.startswith('#endif') and section == 'se':
+                section = None
+                continue
+            if section == 'ae':
+                ae_lines.append(line)
+            elif section == 'se':
+                se_lines.append(line)
+
+        ae_map = _parse_offset_section('\n'.join(ae_lines))
+        se_map = _parse_offset_section('\n'.join(se_lines))
+        return se_map, ae_map
+    else:
+        m = _parse_offset_section(content)
+        return m, {}
+
+
+_NS_DECL_RE = re.compile(r'\bnamespace\s+(\w+)')
+
+
+def _parse_offset_section(text: str) -> Dict[str, int]:
+    """Parse a single section of Offsets.h for namespace::ID entries."""
+    offset_map: Dict[str, int] = {}
     ns_stack: List[str] = []
     brace_depth = 0
     ns_at_depth: Dict[int, str] = {}
+    pending_ns = None
 
-    for line in lines:
+    for line in text.split('\n'):
         stripped = line.strip()
         if stripped.startswith('#'):
             continue
 
-        # Track namespace
-        ns_m = _NS_OPEN_RE.search(line)
+        ns_m = _NS_DECL_RE.search(line)
         if ns_m:
             ns_name = ns_m.group(1)
             if ns_name not in ('RE', 'Offset'):
-                ns_at_depth[brace_depth] = ns_name
-                ns_stack.append(ns_name)
+                if '{' in line[ns_m.end():]:
+                    ns_at_depth[brace_depth] = ns_name
+                    ns_stack.append(ns_name)
+                else:
+                    pending_ns = ns_name
 
-        # Offset ID declaration
+        opens = line.count('{')
+        closes = line.count('}')
+
+        if pending_ns and opens > 0:
+            ns_at_depth[brace_depth] = pending_ns
+            ns_stack.append(pending_ns)
+            pending_ns = None
+
         off_m = _OFFSET_ID_RE.search(line)
         if off_m:
             name = off_m.group(1)
@@ -279,11 +330,8 @@ def _scan_offsets_file(file_path: str) -> Dict[str, int]:
             key = '::'.join(ns_stack + [name])
             offset_map[key] = the_id
 
-        opens = line.count('{')
-        closes = line.count('}')
         brace_depth += opens - closes
 
-        # Pop namespaces
         while ns_at_depth:
             max_depth = max(ns_at_depth.keys())
             if max_depth >= brace_depth:
@@ -360,8 +408,8 @@ def _scan_rtti_vtable_file(
         for m in _VTABLE_RE.finditer(ae_text):
             name = m.group(2)
             ids = [int(x) for x in _REL_ID_RE.findall(m.group(3))]
-            for the_id in ids:
-                off = addr_lib.ae_db.get(the_id)
+            if ids:
+                off = addr_lib.ae_db.get(ids[0])
                 if off:
                     labels.setdefault(name, {'name': name, 'se_off': None, 'ae_off': None})
                     labels[name]['ae_off'] = off
@@ -369,8 +417,8 @@ def _scan_rtti_vtable_file(
         for m in _VTABLE_RE.finditer(se_text):
             name = m.group(2)
             ids = [int(x) for x in _REL_ID_RE.findall(m.group(3))]
-            for the_id in ids:
-                off = addr_lib.se_db.get(the_id)
+            if ids:
+                off = addr_lib.se_db.get(ids[0])
                 if off:
                     labels.setdefault(name, {'name': name, 'se_off': None, 'ae_off': None})
                     labels[name]['se_off'] = off
@@ -385,8 +433,8 @@ def _scan_rtti_vtable_file(
         for m in _VTABLE_RE.finditer(content):
             name = m.group(2)
             ids = [int(x) for x in _REL_ID_RE.findall(m.group(3))]
-            for the_id in ids:
-                off = addr_lib.se_db.get(the_id)
+            if ids:
+                off = addr_lib.se_db.get(ids[0])
                 if off:
                     labels.setdefault(name, {'name': name, 'se_off': None, 'ae_off': None})
                     labels[name]['se_off'] = off
@@ -402,8 +450,14 @@ def _scan_src_relocations(
     src_dir: str,
     addr_lib,
     offset_id_map: Dict[str, int],
+    se_offset_map: Dict[str, int] = None,
+    ae_offset_map: Dict[str, int] = None,
 ) -> List[dict]:
     """Scan CommonLibSSE src/**/*.cpp for REL::Relocation + RELOCATION_ID."""
+    if se_offset_map is None:
+        se_offset_map = offset_id_map
+    if ae_offset_map is None:
+        ae_offset_map = offset_id_map
     func_syms: List[dict] = []
 
     cpp_files = sorted(glob.glob(os.path.join(src_dir, '**', '*.cpp'), recursive=True))
@@ -421,21 +475,31 @@ def _scan_src_relocations(
         lines = content.split('\n')
         current_func_class = None
         current_func_name = None
+        pending_func = None
 
         for line in lines:
             stripped = line.strip()
             if stripped.startswith('#') or stripped.startswith('//'):
                 continue
 
-            # Track function definitions for context
-            # e.g. "void Actor::AddSpell(...) {"
-            func_m = re.match(r'.*?\b((?:\w+::)+)(\w+)\s*\([^)]*\)\s*(?:const\s*)?(?:noexcept\s*)?\{', line)
+            # Track function definitions for context.
+            # Handles both "RetType Class::Method(...) {" (same line)
+            # and "RetType Class::Method(...)\n{" (brace on next line).
+            func_m = re.match(r'.*?\b((?:\w+::)+)(\w+)\s*\([^)]*\)\s*(?:const\s*)?(?:noexcept\s*)?(?:->.*?)?\s*\{?', line)
             if func_m and '::' in func_m.group(1):
                 qual = func_m.group(1).rstrip(':')
-                current_func_name = func_m.group(2)
+                fname = func_m.group(2)
                 if qual.startswith('RE::'):
                     qual = qual[4:]
-                current_func_class = qual
+                if '{' in line[func_m.end()-1:]:
+                    current_func_class = qual
+                    current_func_name = fname
+                    pending_func = None
+                else:
+                    pending_func = (qual, fname)
+            elif pending_func and stripped == '{':
+                current_func_class, current_func_name = pending_func
+                pending_func = None
 
             # RELOCATION_ID in this line
             reloc_m = _RELOC_ID_RE.search(line)
@@ -470,11 +534,12 @@ def _scan_src_relocations(
                 if not off_match:
                     continue
                 offset_key = off_match.group(1)
-                the_id = offset_id_map.get(offset_key)
-                if the_id is None:
+                se_id = se_offset_map.get(offset_key)
+                ae_id = ae_offset_map.get(offset_key)
+                if se_id is None and ae_id is None:
                     continue
-                se_off = addr_lib.se_db.get(the_id)
-                ae_off = addr_lib.ae_db.get(the_id)
+                se_off = addr_lib.se_db.get(se_id) if se_id else None
+                ae_off = addr_lib.ae_db.get(ae_id) if ae_id else None
                 if not se_off and not ae_off:
                     continue
 
@@ -510,12 +575,15 @@ def collect_relocations(
     all_label_syms: List[dict] = []
     all_static_methods: Set[Tuple[str, str]] = set()
 
-    # 1. Parse Offsets.h for offset_id_map
+    # 1. Parse Offsets.h for offset_id_map (SE and AE sections)
     commonlib_include = os.path.dirname(re_include)
     offsets_h = os.path.join(re_include, 'Offsets.h')
-    offset_id_map = _scan_offsets_file(offsets_h)
+    se_offset_map, ae_offset_map = _scan_offsets_file(offsets_h)
+    offset_id_map = dict(se_offset_map)
+    for k, v in ae_offset_map.items():
+        offset_id_map.setdefault(k, v)
     if verbose:
-        print(f'  Parsed {len(offset_id_map)} offset IDs from Offsets.h')
+        print(f'  Parsed {len(se_offset_map)} SE + {len(ae_offset_map)} AE offset IDs from Offsets.h')
 
     # 2. Parse RTTI/VTABLE offset headers
     for fname in ('Offsets_RTTI.h', 'Offsets_VTABLE.h'):
@@ -532,7 +600,9 @@ def collect_relocations(
         basename = os.path.basename(h_path)
         if basename in ('Offsets.h', 'Offsets_RTTI.h', 'Offsets_VTABLE.h'):
             continue
-        funcs, labels, statics = _scan_header_relocations(h_path, addr_lib, offset_id_map)
+        funcs, labels, statics = _scan_header_relocations(h_path, addr_lib, offset_id_map,
+                                                            se_offset_map=se_offset_map,
+                                                            ae_offset_map=ae_offset_map)
         all_func_syms.extend(funcs)
         all_label_syms.extend(labels)
         all_static_methods |= statics
@@ -560,20 +630,24 @@ def collect_relocations(
             deduped_labels.append(l)
     all_label_syms = deduped_labels
 
-    return all_func_syms, all_label_syms, offset_id_map, all_static_methods
+    return all_func_syms, all_label_syms, offset_id_map, all_static_methods, se_offset_map, ae_offset_map
 
 
 def collect_src_relocations(
     src_dir: str,
     addr_lib,
     offset_id_map: Dict[str, int],
+    se_offset_map: Dict[str, int] = None,
+    ae_offset_map: Dict[str, int] = None,
     verbose: bool = False,
 ) -> List[dict]:
     """Scan CommonLibSSE src/**/*.cpp for relocation symbols.
 
     Returns func_syms with both se_off and ae_off populated.
     """
-    func_syms = _scan_src_relocations(src_dir, addr_lib, offset_id_map)
+    func_syms = _scan_src_relocations(src_dir, addr_lib, offset_id_map,
+                                       se_offset_map=se_offset_map,
+                                       ae_offset_map=ae_offset_map)
 
     # Dedup
     seen = set()

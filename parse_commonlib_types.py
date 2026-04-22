@@ -916,8 +916,6 @@ def _import_vtable_names():
             continue
         vtbl_found += 1
         vtbl_addr = vtbl_syms[0].getAddress()
-        if vtbl_found <= 3:
-            print('  DIAG vtbl: {} @ {}'.format(vtbl_label, vtbl_addr))
         for slot_off, slot_name, slot_ret, slot_params in slots:
             if slot_name.startswith('fn_'):
                 continue
@@ -929,8 +927,6 @@ def _import_vtable_names():
                         raw = raw + (1 << 64)
                 else:
                     raw = memory.getInt(ptr_addr) & 0xFFFFFFFF
-                if vtbl_found <= 3 and slot_off <= 16:
-                    print('    DIAG slot +0x{:X}: raw=0x{:X}'.format(slot_off, raw))
                 func_addr = currentProgram.getAddressFactory().getDefaultAddressSpace().getAddress(raw)
                 func = fm.getFunctionAt(func_addr)
                 if not func:
@@ -971,12 +967,10 @@ def _import_vtable_names():
                     except Exception:
                         pass
                 named_vfuncs += 1
-            except Exception as _e:
+            except Exception:
                 read_fail += 1
-                if read_fail <= 3:
-                    print('    DIAG exception: {}'.format(str(_e)[:200]))
     print('Named {} virtual functions from vtable addresses'.format(named_vfuncs))
-    print('  DIAG: vtbl_found={} vtbl_not_found={} read_fail={} no_func={} already_named={}'.format(
+    print('  vtbl_found={} vtbl_not_found={} read_fail={} no_func={} already_named={}'.format(
         vtbl_found, vtbl_not_found, read_fail, no_func, already_named))
 
     # --- Second pass: walk VTABLE_ labels that have no struct definition ---
@@ -1166,6 +1160,28 @@ def generate_script(enums, structs, vtable_structs, output_path, version, symbol
             repr(deduped_fields), repr(bases), repr(has_vtable)))
     lines.append(']')
     lines.append('')
+
+    # Build class::method → signature lookup from ccls-re method data
+    import json as _json_mod
+    _method_sig_lookup = {}  # 'ClassName::Method' -> 'ret_type(param_type pname, ...)'
+    for st in structs.values():
+        class_short = st['name']
+        for mname, (ret, params) in st.get('method_sigs', {}).items():
+            if ret and params is not None:
+                param_str = ', '.join('{} {}'.format(pt, pn) if pn else pt for pn, pt in params)
+                _method_sig_lookup[class_short + '::' + mname] = '{}({})'.format(ret, param_str)
+
+    # Inject signatures from ccls-re into symbol entries
+    _syms = _json_mod.loads(symbols_json)
+    _sig_count = 0
+    for s in _syms:
+        if s['t'] == 'func' and not s.get('sig') and '::' in s.get('n', ''):
+            sig = _method_sig_lookup.get(s['n'])
+            if sig:
+                s['sig'] = sig
+                _sig_count += 1
+    if _sig_count:
+        symbols_json = _json_mod.dumps(_syms, separators=(',', ':'))
 
     # Emit SYMBOLS (version-agnostic — version_key selected at runtime by VERSION)
     lines.append('SYMBOLS = ' + symbols_json)
@@ -1642,13 +1658,15 @@ def main():
     print('\n=== Collecting symbols via regex relocation parser ===')
     import reloc_parser as _rp
 
-    func_syms, label_syms, offset_id_map, static_methods = _rp.collect_relocations(
+    func_syms, label_syms, offset_id_map, static_methods, se_offset_map, ae_offset_map = _rp.collect_relocations(
         RE_INCLUDE, addr_lib, verbose=True)
 
     src_dir = os.path.join(SCRIPT_DIR, 'extern', 'CommonLibSSE', 'src')
     if os.path.isdir(src_dir):
         src_func_syms = _rp.collect_src_relocations(
-            src_dir, addr_lib, offset_id_map, verbose=True)
+            src_dir, addr_lib, offset_id_map,
+            se_offset_map=se_offset_map, ae_offset_map=ae_offset_map,
+            verbose=True)
     else:
         src_func_syms = []
         print('  src/ dir not found, skipping')

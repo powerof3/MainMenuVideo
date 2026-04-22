@@ -531,6 +531,79 @@ def _convert_enums(raw_enums: List[dict]) -> Dict[str, dict]:
     return out
 
 
+def _parse_method_signature(sig: str, short_name: str, qual_name: str = '') -> Optional[Tuple[str, List[Tuple[str, str]]]]:
+    """Parse a ccls detailed_name into (return_type, [(param_name, param_type)]).
+
+    Input examples:
+        'void RE::Actor::AddShout(RE::TESShout *a_shout)'
+        'bool RE::Actor::AddSpell(RE::SpellItem *a_spell)'
+        'RE::NiAVObject *RE::Actor::GetCurrent3D() const'
+        'RE::Actor::~Actor()'  (destructor — no return type)
+    """
+    if not sig or not short_name:
+        return None
+
+    paren = sig.find('(')
+    if paren < 0:
+        return None
+
+    prefix = sig[:paren]
+
+    ret_type = None
+    if qual_name:
+        qi = prefix.find(qual_name)
+        if qi >= 0:
+            ret_type = prefix[:qi].strip()
+    if ret_type is None:
+        sn_idx = prefix.rfind('::' + short_name)
+        if sn_idx >= 0:
+            ret_type = prefix[:sn_idx].strip()
+        else:
+            sn_idx = prefix.rfind(short_name)
+            if sn_idx < 0:
+                return None
+            ret_type = prefix[:sn_idx].strip()
+
+    for kw in ('virtual ', 'static ', 'inline ', 'constexpr ', 'explicit '):
+        if ret_type.startswith(kw):
+            ret_type = ret_type[len(kw):].strip()
+    if not ret_type or ret_type.endswith('::'):
+        return None
+
+    depth = 0
+    end = paren
+    for i in range(paren, len(sig)):
+        if sig[i] == '(':
+            depth += 1
+        elif sig[i] == ')':
+            depth -= 1
+            if depth == 0:
+                end = i
+                break
+    param_str = sig[paren + 1:end].strip()
+
+    params: List[Tuple[str, str]] = []
+    if param_str and param_str != 'void':
+        for p in _split_tmpl_args(param_str):
+            p = p.strip()
+            if not p:
+                continue
+            if '=' in p:
+                eq_idx = p.find('=')
+                p = p[:eq_idx].strip()
+            parts = p.rsplit(None, 1)
+            if len(parts) == 2:
+                ptype, pname = parts
+                if pname.startswith('*') or pname.startswith('&'):
+                    ptype += ' ' + pname[0]
+                    pname = pname[1:]
+                params.append((pname, ptype))
+            else:
+                params.append(('', p))
+
+    return (ret_type, params)
+
+
 def _convert_records(raw_records: List[dict]) -> Dict[str, dict]:
     """Convert $ccls/dumpTypes .records entries to the pipeline struct dict shape.
 
@@ -584,12 +657,18 @@ def _convert_records(raw_records: List[dict]) -> Dict[str, dict]:
 
         vmethods: Dict[str, Any] = {}
         vfuncs: List[Tuple[str, int]] = []
+        all_method_sigs: Dict[str, Tuple[str, List[Tuple[str, str]]]] = {}
         for m in r.get("methods", []):
             mname = m.get("shortName", "")
             if not mname:
                 continue
+            sig_str = m.get("signature", "")
+            mqual = m.get("qualName", "")
+            parsed = _parse_method_signature(sig_str, mname, mqual) if sig_str else None
+            if parsed and mname not in all_method_sigs:
+                all_method_sigs[mname] = parsed
             if m.get("isVirtual") and mname not in vmethods:
-                vmethods[mname] = (None, None)
+                vmethods[mname] = parsed if parsed else (None, None)
                 vi = m.get("vtableIndex", -1)
                 if vi >= 0:
                     vfuncs.append((mname, vi * 8))
@@ -611,6 +690,7 @@ def _convert_records(raw_records: List[dict]) -> Dict[str, dict]:
             "has_vtable": has_vtable,
             "vmethods": vmethods,
             "vfuncs": vfuncs,
+            "method_sigs": all_method_sigs,
         }
     return out
 
