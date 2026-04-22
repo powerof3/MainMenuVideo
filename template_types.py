@@ -17,36 +17,24 @@ appear in C function prototype strings that Ghidra's
          BSTArray<NiPointer<CombatInventoryItem>> -> BSTArray_NiPointer_CombatInventoryItem
          BSTSmallArray<TESForm *, 6>              -> BSTSmallArray_TESForm_ptr_6
 
-  3. Builds a C typedef/forward-declaration fragment to append to
-     ``C_TYPE_PRELUDE`` so ``CParserUtils`` sees those aliases.
-  4. Produces embeddable Python source (``TEMPLATE_TYPE_MAP`` dict and
-     ``_patch_templates`` function) for generated Ghidra scripts, where
-     template names in proto strings are substituted before ``parseSignature``.
-
-Typical usage in a generator script::
-
-    from template_types import process_template_types
-
-    result = process_template_types(structs, extra_types, sig_strings=raw_sigs)
-    c_prelude += '\\n' + result.c_prelude_fragment
-    # result.map_source and result.patch_fn_source are written verbatim into
-    # the generated Ghidra script alongside C_TYPE_PRELUDE.
+  3. Produces embeddable Python source (``TEMPLATE_TYPE_MAP`` and
+     ``TEMPLATE_C_ALIAS_MAP`` dicts plus a ``_patch_templates`` function) for
+     generated Ghidra scripts, where template names in proto strings are
+     substituted for their sanitized aliases before ``parseSignature``.
 
 At Ghidra runtime the generated script contains::
 
-    TEMPLATE_TYPE_MAP = {
-        'NiPointer<BSTriShape>': 'NiPointer_BSTriShape',
-        ...
-    }
+    TEMPLATE_TYPE_MAP = {'NiPointer<BSTriShape>': 'NiPointer_BSTriShape', ...}
+    TEMPLATE_C_ALIAS_MAP = {'RE::NiPointer<RE::BSTriShape>': 'RE_NiPointer_RE_BSTriShape', ...}
 
     def _patch_templates(proto):
-        for _tmpl, _alias in sorted(TEMPLATE_TYPE_MAP.items(), key=lambda x: -len(x[0])):
+        for _tmpl, _alias in sorted(TEMPLATE_C_ALIAS_MAP.items(), key=lambda x: -len(x[0])):
             proto = proto.replace(_tmpl, _alias)
         return proto
 
     ...
     proto = _patch_templates(proto)
-    func_def = CParserUtils.parseSignature(dtm, program, C_TYPE_PRELUDE + '\\n' + proto, True)
+    func_def = CParserUtils.parseSignature(dtm, program, proto, True)
 
 Notes
 -----
@@ -96,9 +84,6 @@ class TemplateResult:
         Maps the original C++ template instantiation name to a sanitized
         C identifier alias for use in ``CParserUtils.parseSignature()`` prototypes.
         Example: ``{'RE::NiPointer<RE::BSTriShape>': 'RE_NiPointer_RE_BSTriShape'}``
-    c_prelude_fragment:
-        C declaration block (struct forward-decls + typedefs) that can be
-        appended to ``C_TYPE_PRELUDE``.
     map_source:
         Python source text for the ``TEMPLATE_TYPE_MAP`` variable, ready to
         be embedded verbatim in a generated Ghidra script.
@@ -108,7 +93,6 @@ class TemplateResult:
     """
     template_map: Dict[str, str] = dc_field(default_factory=dict)
     c_alias_map: Dict[str, str] = dc_field(default_factory=dict)
-    c_prelude_fragment: str = ''
     map_source: str = 'TEMPLATE_TYPE_MAP = {}\n'
     patch_fn_source: str = (
         'def _patch_templates(proto):\n'
@@ -354,17 +338,6 @@ def build_template_result(template_names: Set[str]) -> TemplateResult:
     if not template_map:
         return TemplateResult()
 
-    # C prelude fragment -------------------------------------------------------
-    prelude_lines: List[str] = []
-    seen: Set[str] = set()
-    for _orig, sanitized in sorted(c_alias_map.items(), key=lambda kv: kv[1]):
-        if sanitized in seen:
-            continue
-        seen.add(sanitized)
-        prelude_lines.append(f'struct {sanitized};')
-        prelude_lines.append(f'typedef struct {sanitized} {sanitized};')
-    c_prelude_fragment = '\n'.join(prelude_lines) + '\n'
-
     # Python source: TEMPLATE_TYPE_MAP (original → display name for field resolution)
     map_lines = ['TEMPLATE_TYPE_MAP = {']
     for orig in sorted(template_map):
@@ -391,7 +364,6 @@ def build_template_result(template_names: Set[str]) -> TemplateResult:
     return TemplateResult(
         template_map=template_map,
         c_alias_map=c_alias_map,
-        c_prelude_fragment=c_prelude_fragment,
         map_source=map_source,
         patch_fn_source=patch_fn_source,
     )
@@ -448,7 +420,6 @@ def process_template_types(
     Returns
     -------
     TemplateResult
-        Append ``.c_prelude_fragment`` to your ``C_TYPE_PRELUDE`` string.
         Write ``.map_source`` and ``.patch_fn_source`` verbatim into the
         generated Ghidra script alongside the other module-level constants.
         At Ghidra runtime, call ``_patch_templates(proto)`` on each proto

@@ -214,164 +214,6 @@ def load_ae_rename_db(file_path, ae_db):
     return result
 
 
-# ---------------------------------------------------------------------------
-# Extra types supplementing clang's output
-# ---------------------------------------------------------------------------
-# - typedefs: clang now emits these as empty size-only shells (via TypedefDecl
-#             walking in clang_ast_collect), but build_c_prelude() still needs
-#             `typedef unsigned int FormID;` style lines for Ghidra's CParser —
-#             empty struct shells don't teach CParser the underlying integer type.
-# - enums:    stale fallbacks — clang finds these already; the `if name not in
-#             enums` guard below skips almost all of them.
-# - opaques:  genuine externals — forward-declared types whose real definitions
-#             live in Havok/Gamebryo/Windows SDKs clang never sees. We do NOT
-#             auto-emit shells from forward-decls (friend-decl inside class body
-#             collides with the real type's qualified name).
-
-_EXTRA_TYPEDEFS = {
-    'FormID':          {'base': 'u32'},
-    'ObjectRefHandle': {'base': 'u32'},
-    'ActorHandle':     {'base': 'u32'},
-    'RefHandle':       {'base': 'u32'},
-    'VMHandle':        {'base': 'u64'},
-    'UPInt':           {'base': 'u64'},
-    'hkpShapeKey':     {'base': 'u32'},
-    'va_list':         {'base': 'u64'},
-    'char16_t':        {'base': 'u16'},
-}
-
-_EXTRA_ENUMS = {
-    'EffectArchetype': {
-        'size': 4,
-        'values': {
-            'kNone': -1, 'kValueModifier': 0, 'kScript': 1, 'kDispel': 2,
-            'kCureDisease': 3, 'kAbsorb': 4, 'kDualValueModifier': 5,
-            'kCalm': 6, 'kDemoralize': 7, 'kFrenzy': 8, 'kDisarm': 9,
-            'kCommandSummoned': 10, 'kInvisibility': 11, 'kLight': 12,
-            'kDarkness': 13, 'kNightEye': 14, 'kLock': 15, 'kOpen': 16,
-            'kBoundWeapon': 17, 'kSummonCreature': 18, 'kDetectLife': 19,
-            'kTelekinesis': 20, 'kParalysis': 21, 'kReanimate': 22,
-            'kSoulTrap': 23, 'kTurnUndead': 24, 'kGuide': 25,
-            'kWerewolfFeed': 26, 'kCureParalysis': 27, 'kCureAddiction': 28,
-            'kCurePoison': 29, 'kConcussion': 30, 'kValueAndParts': 31,
-            'kAccumulateMagnitude': 32, 'kStagger': 33, 'kPeakValueModifier': 34,
-            'kCloak': 35, 'kWerewolf': 36, 'kSlowTime': 37, 'kRally': 38,
-            'kEnhanceWeapon': 39, 'kSpawnHazard': 40, 'kEtherealize': 41,
-            'kBanish': 42, 'kSpawnScriptedRef': 43, 'kDisguise': 44,
-            'kGrabActor': 45, 'kVampireLord': 46,
-        },
-    },
-    'InputContextID': {
-        'size': 4,
-        'values': {
-            'kGameplay': 0, 'kMenuMode': 1, 'kConsole': 2, 'kItemMenu': 3,
-            'kInventory': 4, 'kDebugText': 5, 'kFavorites': 6, 'kMap': 7,
-            'kStats': 8, 'kCursor': 9, 'kBook': 10, 'kDebugOverlay': 11,
-            'kJournal': 12, 'kTFCMode': 13, 'kMapDebug': 14, 'kLockpicking': 15,
-            'kFavor': 16, 'kTotal': 17, 'kNone': 18,
-        },
-    },
-    'ITEM_REMOVE_REASON': {
-        'size': 4,
-        'values': {
-            'kRemove': 0, 'kSteal': 1, 'kSelling': 2,
-            'kDropping': 3, 'kStoreInContainer': 4, 'kStoreInTeammate': 5,
-        },
-    },
-    'REGION_DATA_ID':       {'size': 4, 'values': {}},
-    'MATERIAL_ID':          {'size': 4, 'values': {}},
-    'LoadConstants':        {'size': 4, 'values': {}},
-    'SpellType':            {'size': 4, 'values': {}},
-    'CastingSource':        {'size': 4, 'values': {}},
-    'CannotCastReason':     {'size': 4, 'values': {}},
-    'ActorValue':           {'size': 4, 'values': {}},
-    'DEFAULT_OBJECT':       {'size': 4, 'values': {}},
-    'SOUND_LEVEL':          {'size': 4, 'values': {}},
-    'ErrorCode':            {'size': 4, 'values': {}},
-    'ACTOR_LOS_LOCATION':   {'size': 4, 'values': {}},
-    'ACTOR_VALUE_MODIFIER': {'size': 4, 'values': {}},
-    'FormType':             {'size': 1, 'values': {}},
-    'UI_MESSAGE_TYPE':      {'size': 4, 'values': {}},
-}
-
-_EXTRA_OPAQUES = [
-    'BSFixedString', 'TintMask', 'IAIWorldLocation', 'AIWorldLocationContext',
-    'IDebugText', 'NiVisibleArray', 'TrespassPackage',
-    'CombatProjectileAimController', 'BSPathingStreamWrite', 'BSPathingStreamRead',
-    'hkStatisticsCollector', 'hkaChunkCache', 'hkClass',
-    'hkpShapeRayCastInput', 'hkpShapeRayCastOutput',
-    'hkpShapeRayBundleCastInput', 'hkpShapeRayBundleCastOutput',
-    'hkpShapeModifier', 'hkpCdBodyPairCollector', 'hkpCollisionInput',
-    'hkpSimpleConstraintContactMgr', 'hkAabbUint32', 'hkbContext',
-    'hkbClipGenerator', 'BSSynchronizedClipGenerator',
-    'CollisionEntry', 'CheckTargetArgs', 'IUIMessageData',
-    'GFxMovieDef', 'GFxValue', 'ObjectInterface',
-    'RendererInitOSData', 'ApplicationWindowProperties', 'SourceActionMap',
-    'IFunctionArguments', 'ISendEventFilter',
-    'TrapData', 'TrapEntry', 'TargetEntry',
-    'Location', 'ArgsType',
-    'hkpCharacterRigidBody', 'hkpCharacterRigidBodyListener',
-    'HWND', 'NiAVObject', 'NiPoint3', 'NiColorA',
-    'BSRenderPass', 'BSShaderProperty', 'BSLight', 'BSGeometry', 'BSShader',
-    'BSAnimNoteReceiver', 'BShkbAnimationGraph', 'IAnimationGraphManagerHolder',
-    'BGSSoundDescriptorForm', 'BGSDecalNode', 'BSDynamicTriShape',
-    'BGSImpactManager', 'BGSImpactDataSet', 'BGSNumericIDIndex',
-    'BGSSaveLoadGame', 'BGSPrimitive',
-    'TESHavokUtilities', 'TESRegionData', 'TESRegionDataGrass',
-    'TESRegionDataObjects', 'TESRegionDataManager', 'TESIdleForm',
-    'ExtraDataList', 'InventoryEntryData', 'MagicItem', 'MagicCaster',
-    'MagicSystem', 'MagicUtilities', 'Effect', 'ActiveEffectFactory',
-    'AIFormulas', 'HitData', 'MovementMessageActorCollision',
-    'ActorMotionFeedbackOutput', 'ControlMap', 'BSGamepadDevice',
-    'SkyrimVM', 'ConsoleLog', 'LooseFileStream',
-    'AnimationFileManagerSingleton', 'SendHUDMessage', 'SendUIMessage',
-    'PackageLocation', 'NiDefaultAVObjectPalette', 'BSScaleformExternalTexture',
-    'hkpCollidable', 'hkVector4', 'hkVector4Comparison',
-    'hkMoppBvTreeShapeBase', 'hkpBoxShape', 'hkpCapsuleShape',
-    'hkpCompressedMeshShape', 'hkpConvexVerticesShape', 'hkpListShape',
-    'hkpMoppBvTreeShape', 'hkpSphereShape', 'hkpRigidBody',
-    'bhkRigidBody', 'bhkShape', 'CFilter', 'Result',
-    'hkpCdBody', 'hkpRayHitCollector', 'hkpSphere', 'hkSphere',
-    'hkp3AxisSweep', 'hkpBroadPhaseHandle', 'hkpCachingShapePhantom',
-    'hkpWorld', 'hkpEntity', 'hkpPhantom', 'hkpSimulationIsland',
-    'hkpWorldObject', 'ahkpCharacterProxy', 'ahkpWorld',
-    'bhkCharacterStateClimbing', 'hkbBehaviorGraph', 'hkbStateMachine',
-    'hkQsTransform', 'hkaAnimation', 'hkaAnimationControl',
-    'hkaDefaultAnimationControl',
-    'NiCamera', 'NiMatrix3', 'BSCullingProcess', 'BSParabolicCullingProcess',
-    'NiBackToFrontAccumulator', 'BSString', 'BSStream',
-    'ObjectBindPolicy', 'ProjectileHandle', 'LaunchData',
-    'BSSoundHandle', 'TESFile', 'TESDescription',
-    'TaskQueueInterface', 'SpellItem', 'BSPathingRequest',
-]
-
-
-_BASE_TO_C = {
-    'u32': 'unsigned int', 'i32': 'int',
-    'u64': 'unsigned long long', 'i64': 'long long',
-    'u16': 'unsigned short', 'i16': 'short',
-    'u8':  'unsigned char',  'i8':  'char',
-}
-
-
-def build_c_prelude():
-    """Build a C declaration prelude from the extra-type tables for CParserUtils."""
-    lines = []
-    for name, info in sorted(_EXTRA_TYPEDEFS.items()):
-        c_base = _BASE_TO_C.get(info['base'], 'unsigned int')
-        lines.append('typedef {} {};'.format(c_base, name))
-    for name, info in sorted(_EXTRA_ENUMS.items()):
-        values = info.get('values', {})
-        if values:
-            body = ', '.join('{}={}'.format(k, v) for k, v in values.items())
-            lines.append('enum {} {{ {} }};'.format(name, body))
-        else:
-            lines.append('typedef unsigned int {};'.format(name))
-    for name in sorted(_EXTRA_OPAQUES):
-        lines.append('struct {};'.format(name))
-        lines.append('typedef struct {} {};'.format(name, name))
-    return '\n'.join(lines)
-
 VERSIONS = {
     'se': {
         'defines':     [],
@@ -1625,7 +1467,7 @@ run()
 '''
 
 
-def generate_script(enums, structs, vtable_structs, output_path, version, symbols_json, fallback_symbols_json='[]', c_prelude='', template_source=''):
+def generate_script(enums, structs, vtable_structs, output_path, version, symbols_json, fallback_symbols_json='[]', template_source=''):
     os.makedirs(os.path.dirname(output_path), exist_ok=True)
 
     lines = [GHIDRA_MERGED_HEADER]
@@ -1721,10 +1563,6 @@ def generate_script(enums, structs, vtable_structs, output_path, version, symbol
 
     # Fallback symbols (AE rename / SE PDB new entries) applied after vtable walk
     lines.append('FALLBACK_SYMBOLS = ' + fallback_symbols_json)
-    lines.append('')
-
-    # Embed C prelude for CParserUtils signature parsing
-    lines.append('C_TYPE_PRELUDE = ' + repr(c_prelude))
     lines.append('')
 
     # Embed template type map and patch function (populated by template_types.py)
@@ -2218,40 +2056,12 @@ def run_version(version, symbols_json, fallback_symbols_json='[]'):
     _inject_vtable_fields(structs, vtable_structs)
     _flatten_structs(structs)
 
-    # Inject hand-authored extras (typedefs, stub enums, external opaques) not
-    # derivable from CommonLibSSE headers.  Each only fires when clang didn't
-    # already produce the type.
     category = '/CommonLibSSE/RE'
-    _base_sz = {'u32': 4, 'i32': 4, 'u64': 8, 'i64': 8, 'u16': 2, 'i16': 2, 'u8': 1, 'i8': 1}
-    for name, info in _EXTRA_TYPEDEFS.items():
-        if name not in enums and name not in structs:
-            structs[name] = {'name': name, 'full_name': name,
-                             'size': _base_sz.get(info['base'], 4),
-                             'category': category, 'fields': [], 'bases': [],
-                             'has_vtable': False}
-    for name, info in _EXTRA_ENUMS.items():
-        if name not in enums:
-            vals = list(info.get('values', {}).items())
-            enums[name] = {'name': name, 'full_name': name,
-                           'size': info.get('size', 4),
-                           'category': category, 'values': vals}
-    for name in _EXTRA_OPAQUES:
-        if name not in structs and name not in enums:
-            structs[name] = {'name': name, 'full_name': name, 'size': 0,
-                             'category': category, 'fields': [], 'bases': [],
-                             'has_vtable': False}
 
-    c_prelude = build_c_prelude()
-
-    # Optional: scan for C++ template instantiation types and extend the prelude
+    # Optional: scan for C++ template instantiation types and emit sanitized aliases
     try:
         from template_types import process_template_types as _process_templates
         _tmpl = _process_templates(structs)
-        # NOTE: Do NOT append _tmpl.c_prelude_fragment to c_prelude — the template
-        # alias structs are created as Ghidra DataTypes (struct shells) so
-        # CParserUtils can resolve them via the DataTypeManager.  Putting 1200+
-        # forward declarations in C_TYPE_PRELUDE makes it ~280KB which causes
-        # Ghidra's C parser to fail on every prototype.
         template_source = _tmpl.combined_source()
         # Add template types to structs so they get created as Ghidra DataTypes.
         # template_map: original → display name (RE:: stripped)
@@ -2342,7 +2152,7 @@ def run_version(version, symbols_json, fallback_symbols_json='[]'):
         template_source = ''
 
     print('Generating Ghidra script...')
-    n_enums, n_structs = generate_script(enums, structs, vtable_structs, output_path, version, symbols_json, fallback_symbols_json, c_prelude, template_source)
+    n_enums, n_structs = generate_script(enums, structs, vtable_structs, output_path, version, symbols_json, fallback_symbols_json, template_source)
     print('Output: {} ({} enums, {} structs)'.format(output_path, n_enums, n_structs))
 
 

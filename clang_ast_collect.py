@@ -418,8 +418,7 @@ def _walk(node, ns_stack: List[str], re_dir: str,
             # where X refers to a type in the enclosing namespace — not a nested
             # type of the current class.  Recording them at nested scope
             # produces misleading qualified names (e.g. RE::Actor::BSLight vs
-            # the real RE::BSLight).  External opaques live in
-            # parse_commonlib_types._EXTRA_OPAQUES.
+            # the real RE::BSLight).
             return
         if full_name in structs:
             return

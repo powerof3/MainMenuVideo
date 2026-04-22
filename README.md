@@ -13,9 +13,8 @@ vtable layouts, and function signatures into Ghidra.
 6. [Running the Generator](#running-the-generator)
 7. [Running the Ghidra Scripts](#running-the-ghidra-scripts)
 8. [Pipeline Files Reference](#pipeline-files-reference)
-9. [extra\_types.json Reference](#extra_typesjson-reference)
-10. [template\_types.py Reference](#template_typespy-reference)
-11. [Known Limitations](#known-limitations)
+9. [template\_types.py Reference](#template_typespy-reference)
+10. [Known Limitations](#known-limitations)
 
 ---
 
@@ -45,7 +44,6 @@ GhidraImportScripts/
 │   └── CommonLibImport_AE.py   Generated: import AE types + vtables + symbols
 ├── parse_commonlib_types.py    Generator for CommonLibImport_SE/AE.py
 ├── template_types.py           Optional: C++ template instantiation handling
-├── extra_types.json            Manual type definitions (typedefs, enums, opaques)
 └── requirements.txt            Python dependencies
 ```
 
@@ -105,14 +103,13 @@ resulting scripts inside Ghidra on a Skyrim SE or AE binary.
 CommonLibSSE headers ─┬─ parse_commonlib_types.py ──► CommonLibImport_SE.py
 Address libraries   ──┤                           ──► CommonLibImport_AE.py
 PDB files           ──┘
-extra_types.json ─────────────────────────────────► (embedded in both scripts)
-template_types.py ────────────────────────────────► (optional, auto-used)
+template_types.py ────────────────────────────────► (auto-used)
 ```
 
 **Symbol sources** (in priority order for SE):
 
-1. CommonLibSSE headers — libclang AST (fully-qualified names, signatures)
-2. CommonLibSSE `src/*.cpp` — libclang unity parse (functions not in headers)
+1. CommonLibSSE headers — clang JSON AST (fully-qualified names, signatures)
+2. CommonLibSSE `src/*.cpp` — clang unity parse (functions not in headers)
 3. `skyrimae.rename` — AE address database fallback names
 4. `SkyrimSE.pdb` — Crashlogger SE PDB public symbols (fallback, no signatures)
 
@@ -218,7 +215,6 @@ Output: ghidrascripts/CommonLibImport_SE.py (891 enums, 2853 structs)
 
 Regenerate whenever:
 - CommonLibSSE submodule is updated (`git submodule update`)
-- `extra_types.json` is edited
 - `template_types.py` or the generator is modified
 
 ---
@@ -266,7 +262,6 @@ libclang to produce struct/enum/vtable data and function symbols.
 | `addresslibrary/` | SE and AE offset databases |
 | `extern/AddressLibraryDatabase/skyrimae.rename` | AE fallback symbol names |
 | `extras/SkyrimSE.pdb` | SE fallback symbol names |
-| `extra_types.json` | Manually defined types not extractable from headers |
 | `template_types.py` | Template instantiation alias generation (auto-imported) |
 
 Output variables in generated scripts:
@@ -274,101 +269,13 @@ Output variables in generated scripts:
 - `STRUCTS` — list of `(name, size, category, fields, bases, has_vtable)` tuples
 - `VTABLES` — list of `(name, class_full_name, size, category, slots)` tuples
 - `SYMBOLS` — list of `{n, t, sig, s?, a?, src}` dicts
-- `C_TYPE_PRELUDE` — C declarations prepended to every `CParserUtils.parseSignature()` call
 - `TEMPLATE_TYPE_MAP` — maps `NiPointer<BSTriShape>` → `NiPointer_BSTriShape` etc.
-
-### `extra_types.json`
-
-Manually maintained type definitions for types that cannot be auto-extracted from
-the headers. Loaded by the generator and embedded in both generated scripts.
-See [extra\_types.json Reference](#extra_typesjson-reference) below.
 
 ### `template_types.py`
 
 Optional module that scans for C++ template instantiation names and generates
 sanitized C identifier aliases. Automatically imported by the generator when
 present. See [template\_types.py Reference](#template_typespy-reference) below.
-
----
-
-## extra_types.json Reference
-
-File location: `extra_types.json` (repository root)
-
-This file defines types that are either template instantiations, primitive
-typedef aliases, or forward-declared-only types that libclang cannot extract with
-full detail from the CommonLibSSE headers. The generator loads this file and:
-
-1. Injects the types into the Ghidra Data Type Manager.
-2. Emits C declarations into `C_TYPE_PRELUDE` so `CParserUtils.parseSignature()`
-   can parse function signatures that reference these types.
-
-### Schema
-
-```json
-{
-  "_comment": "...",
-
-  "typedefs": {
-    "TypeName": {
-      "base": "u32",
-      "comment": "optional human-readable explanation"
-    }
-  },
-
-  "enums": {
-    "EnumName": {
-      "size": 4,
-      "comment": "...",
-      "values": {
-        "kSomeValue": 0,
-        "kOtherValue": 1
-      }
-    }
-  },
-
-  "opaques": {
-    "StructName": "human-readable description"
-  }
-}
-```
-
-### `typedefs` — integer typedef aliases
-
-| Field | Values | Description |
-|-------|--------|-------------|
-| `base` | `u8` `i8` `u16` `i16` `u32` `i32` `u64` `i64` | Underlying integer type |
-| `comment` | string | Optional description |
-
-Emitted as `typedef unsigned int FormID;` etc. in `C_TYPE_PRELUDE`.
-
-### `enums` — enum definitions
-
-| Field | Values | Description |
-|-------|--------|-------------|
-| `size` | `1` `2` `4` `8` | Byte size of the enum |
-| `values` | `{ "kName": N }` | Enumerator name → integer value pairs |
-| `comment` | string | Optional description |
-
-Enums with no `values` (empty `{}`) are emitted as `typedef unsigned int Name;`
-since CParserUtils cannot parse empty enum bodies.
-
-### `opaques` — forward-declared / opaque structs
-
-Any type that is forward-declared only, has an unknown layout, or is only
-referenced by pointer. Created as a zero-size opaque struct in the Ghidra Data
-Type Manager. Emitted as:
-```c
-struct Name;
-typedef struct Name Name;
-```
-
-### Adding new types
-
-Add types here when a Ghidra script run produces a `SIG FAIL` for a function
-whose signature contains an unknown type name. Identify the type in CommonLibSSE
-headers to determine whether it belongs in `typedefs`, `enums`, or `opaques`,
-then regenerate both scripts.
 
 ---
 
@@ -389,10 +296,11 @@ and cannot appear in C function prototype strings that Ghidra's
    - `NiPointer<BSTriShape>` → `NiPointer_BSTriShape`
    - `BSTEventSource<ActorKill::Event>` → `BSTEventSource_ActorKill_Event`
    - `BSTSmallArray<TESForm *, 6>` → `BSTSmallArray_TESForm_ptr_6`
-3. **Extends** `C_TYPE_PRELUDE` with forward declarations for the alias names.
-4. **Embeds** a `TEMPLATE_TYPE_MAP` dict and `_patch_templates(proto)` function
+3. **Embeds** a `TEMPLATE_TYPE_MAP` dict and `_patch_templates(proto)` function
    in each generated script. Before every `parseSignature()` call the proto
-   string is patched so template names are replaced by their aliases.
+   string is patched so template names are replaced by their aliases. The
+   sanitized aliases are registered as Ghidra DataTypes (opaque struct shells)
+   so `CParserUtils` resolves them via the DataTypeManager.
 
 ### Integration
 
@@ -413,14 +321,14 @@ from template_types import (
 )
 ```
 
-`process_template_types(structs, extra_types, sig_strings)` returns a
+`process_template_types(structs, sig_strings=...)` returns a
 `TemplateResult` containing:
 
 | Attribute | Type | Description |
 |-----------|------|-------------|
-| `template_map` | `dict[str, str]` | `original → sanitized` |
-| `c_prelude_fragment` | `str` | C typedef/forward-decl block |
-| `map_source` | `str` | Python source: `TEMPLATE_TYPE_MAP = {...}` |
+| `template_map` | `dict[str, str]` | `original → display name` (`RE::` stripped) |
+| `c_alias_map` | `dict[str, str]` | `original → sanitized C identifier` |
+| `map_source` | `str` | Python source: `TEMPLATE_TYPE_MAP = {...}` + `TEMPLATE_C_ALIAS_MAP = {...}` |
 | `patch_fn_source` | `str` | Python source: `def _patch_templates(proto): ...` |
 
 ---
@@ -486,10 +394,10 @@ headers get full field data.
 ### CParserUtils type resolution
 
 Ghidra's `CParserUtils.parseSignature()` resolves type names against the
-`C_TYPE_PRELUDE` declarations prepended to each proto. Types not covered by
-`C_TYPE_PRELUDE` or by the Data Type Manager are replaced with `void *` by the
-`sanitize_unknown_types()` fallback. Add missing types to `extra_types.json` to
-improve coverage.
+Data Type Manager. All types (enums, structs, template instantiation aliases,
+primitive typedef shells) are registered as Ghidra DataTypes ahead of the
+signature pass by `CommonLibImport_*.py`. Types not covered by the DTM are
+replaced with `void *` by the `sanitize_unknown_types()` fallback.
 
 ---
 
