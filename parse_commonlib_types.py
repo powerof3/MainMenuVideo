@@ -159,8 +159,8 @@ VERSIONS = {
 }
 
 
-# Stub headers for third-party deps required by CommonLibSSE PCH (binary_io,
-# spdlog).  ccls-re's built-in clang needs these to avoid fatal parse errors.
+# Third-party includes from vcpkg (binary_io, spdlog).
+# ccls-re needs these to parse CommonLibSSE headers.
 _VCPKG_INCLUDE = None
 _vcpkg_root = os.environ.get('VCPKG_ROOT', '')
 if _vcpkg_root:
@@ -170,56 +170,10 @@ if _vcpkg_root:
                 and os.path.isfile(os.path.join(_candidate, 'spdlog', 'spdlog.h'))):
             _VCPKG_INCLUDE = _candidate
             break
-
-if _VCPKG_INCLUDE:
-    _THIRD_PARTY_INCLUDE = _VCPKG_INCLUDE
-else:
-    _STUB_DIR = os.path.join(SCRIPT_DIR, '_clang_stubs')
-    os.makedirs(os.path.join(_STUB_DIR, 'binary_io'), exist_ok=True)
-    os.makedirs(os.path.join(_STUB_DIR, 'spdlog'), exist_ok=True)
-
-    _binary_io_stub = os.path.join(_STUB_DIR, 'binary_io', 'file_stream.hpp')
-    if not os.path.isfile(_binary_io_stub):
-        with open(_binary_io_stub, 'w') as _f:
-            _f.write('#pragma once\nnamespace binary_io { class file_istream {}; class file_ostream {}; }\n')
-
-    _spdlog_stub = os.path.join(_STUB_DIR, 'spdlog', 'spdlog.h')
-    if not os.path.isfile(_spdlog_stub):
-        with open(_spdlog_stub, 'w') as _f:
-            _f.write('#pragma once\nnamespace spdlog { class logger {}; }\n')
-
-    _THIRD_PARTY_INCLUDE = _STUB_DIR
-
-# Shadow spdlog/details/windows_include.h to undefine Windows macros that
-# conflict with REX::W32 constexpr variables.
-_rex_w32_constexpr_names = []
-for _root, _dirs, _files in os.walk(os.path.join(COMMONLIB_INCLUDE, 'REX', 'W32')):
-    for _fname in _files:
-        if _fname.endswith('.h'):
-            try:
-                with open(os.path.join(_root, _fname), encoding='utf-8', errors='replace') as _fh:
-                    for _line in _fh:
-                        _m = re.match(r'\s*inline\s+(?:constexpr\s+|const\s+)?auto\s+(\w+)', _line)
-                        if _m:
-                            _rex_w32_constexpr_names.append(_m.group(1))
-            except OSError:
-                pass
-
-_WIN_STUB_DIR = os.path.join(SCRIPT_DIR, '_clang_stubs')
-os.makedirs(os.path.join(_WIN_STUB_DIR, 'spdlog', 'details'), exist_ok=True)
-os.makedirs(os.path.join(_WIN_STUB_DIR, 'spdlog', 'sinks'), exist_ok=True)
-with open(os.path.join(_WIN_STUB_DIR, 'spdlog', 'sinks', 'wincolor_sink-inl.h'), 'w') as _f:
-    _f.write('#pragma once\n')
-_undef_block = '\n'.join('#undef ' + _n for _n in _rex_w32_constexpr_names
-                         + ['IMAGE_FIRST_SECTION', 'IMAGE_SNAP_BY_ORDINAL64'])
-with open(os.path.join(_WIN_STUB_DIR, 'spdlog', 'details', 'windows_include.h'), 'w') as _f:
-    _f.write(
-        '#pragma once\n'
-        '#ifndef NOMINMAX\n#define NOMINMAX\n#endif\n'
-        '#ifndef WIN32_LEAN_AND_MEAN\n#define WIN32_LEAN_AND_MEAN\n#endif\n'
-        '#include <windows.h>\n'
-        + _undef_block + '\n'
-    )
+if not _VCPKG_INCLUDE:
+    print('ERROR: VCPKG_ROOT not set or spdlog/binary_io not installed.')
+    print('  Install: vcpkg install spdlog binary-io --triplet=x64-windows')
+    sys.exit(1)
 
 PARSE_ARGS_BASE = [
     '-x', 'c++',
@@ -229,8 +183,7 @@ PARSE_ARGS_BASE = [
     '-DWIN32', '-D_WIN64',
     '-D_CRT_USE_BUILTIN_OFFSETOF',
     '-DSPDLOG_COMPILED_LIB',
-    '-I' + _WIN_STUB_DIR,
-    '-isystem', _THIRD_PARTY_INCLUDE,
+    '-isystem', _VCPKG_INCLUDE,
     '-I' + COMMONLIB_INCLUDE,
 ]
 
