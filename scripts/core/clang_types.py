@@ -128,18 +128,21 @@ def _qualify_bare(name, root_ns='RE'):
     name = name.strip()
     if not name:
         return name
-    prefix = root_ns + '::'
-    if name.startswith(prefix) or name.startswith('std::'):
+    if '::' in name:
         return name
     if name in _PRIM_ALL:
         return name
     if re.fullmatch(r'[+-]?[0-9]+(?:\.[0-9]*)?[uUlLfF]*', name):
         return name
-    return prefix + name
+    return root_ns + '::' + name
 
 
 def _qualify_re(name, root_ns='RE'):
-    """Recursively qualify a C++ type name with the root namespace prefix."""
+    """Recursively qualify a C++ type name with the root namespace prefix.
+
+    Already-qualified names (containing '::') are left as-is.
+    Bare identifiers that are not primitives get root_ns:: prepended.
+    """
     name = name.strip()
     if not name:
         return name
@@ -169,10 +172,9 @@ def _qualify_re(name, root_ns='RE'):
         return '{}{}<{}>{}'.format(leading, qual_outer, qual_args, trailing)
     if name in _PRIM_ALL:
         return '{}{}{}'.format(leading, name, trailing)
-    parts = name.split('::')
-    first = parts[0].strip()
-    _known_ns = {root_ns, 'std', 'WinAPI', 'SKSE', 'REX'}
-    if first in _PRIM_BARE or first in _known_ns:
+    if '::' in name:
+        return '{}{}{}'.format(leading, name, trailing)
+    if name in _PRIM_BARE:
         return '{}{}{}'.format(leading, name, trailing)
     return '{}{}{}{}'.format(leading, root_ns + '::', name, trailing)
 
@@ -566,7 +568,7 @@ def _parse_layouts_with_bases(text, root_ns='RE'):
                 m_rec = re.match(r'(?:class|struct|union)\s+(.+?)\s*$', content)
                 if m_rec:
                     first_seen = True
-                    type_name = m_rec.group(1).strip()
+                    type_name = _KW_STRIP_RE.sub('', m_rec.group(1)).strip()
                 continue
 
             # Base class
