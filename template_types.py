@@ -62,11 +62,11 @@ from typing import Dict, List, Optional, Set
 # ---------------------------------------------------------------------------
 
 def _display_name(orig: str) -> str:
-    """Strip ``RE::`` namespace prefix for display-friendly template names.
+    """Return the display name for a template instantiation.
 
-    Example: ``RE::NiPointer<RE::BSTriShape>`` -> ``NiPointer<BSTriShape>``
+    Preserves the full qualified name including ``RE::`` namespace prefix.
     """
-    return orig.replace('RE::', '')
+    return orig
 
 
 @dataclass
