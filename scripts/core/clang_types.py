@@ -124,7 +124,8 @@ def _split_tmpl_args(inner):
     return args
 
 
-def _qualify_bare(name, root_ns='RE'):
+def _ensure_qualified(name, root_ns='RE'):
+    """Prepend root_ns:: to bare identifiers. Already-qualified names are unchanged."""
     name = name.strip()
     if not name:
         return name
@@ -137,11 +138,11 @@ def _qualify_bare(name, root_ns='RE'):
     return root_ns + '::' + name
 
 
-def _qualify_re(name, root_ns='RE'):
-    """Recursively qualify a C++ type name with the root namespace prefix.
+def _qualify_type(name, root_ns='RE'):
+    """Recursively ensure a C++ type name is fully qualified.
 
-    Already-qualified names (containing '::') are left as-is.
-    Bare identifiers that are not primitives get root_ns:: prepended.
+    Strips cv-qualifiers and pointer/reference suffixes, qualifies the core
+    name (and template arguments), then re-attaches them.
     """
     name = name.strip()
     if not name:
@@ -166,9 +167,9 @@ def _qualify_re(name, root_ns='RE'):
     if lt >= 0 and name.endswith('>'):
         outer = name[:lt].strip()
         inner_str = name[lt + 1:-1]
-        qual_outer = _qualify_bare(outer, root_ns)
+        qual_outer = _ensure_qualified(outer, root_ns)
         inner_args = _split_tmpl_args(inner_str)
-        qual_args = ', '.join(_qualify_re(a, root_ns) for a in inner_args)
+        qual_args = ', '.join(_qualify_type(a, root_ns) for a in inner_args)
         return '{}{}<{}>{}'.format(leading, qual_outer, qual_args, trailing)
     if name in _PRIM_ALL:
         return '{}{}{}'.format(leading, name, trailing)
@@ -196,7 +197,7 @@ def _record_type_to_pipeline(raw, root_ns='RE'):
         count = int(m_arr.group(2))
         return 'arr:{}:{}'.format(elem_type, count)
     if raw:
-        return 'struct:' + _qualify_re(raw, root_ns)
+        return 'struct:' + _qualify_type(raw, root_ns)
     return 'ptr'
 
 
