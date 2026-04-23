@@ -141,6 +141,8 @@ with pyghidra.open_project(PROJECT_DIR, PROJECT_NAME, create=True) as project:
             ("TESObjectREFR",   "/CommonLibSSE/RE", 140,  25),
             ("PlayerCharacter", "/CommonLibSSE/RE", 3000, 500),
             ("ActorValue",      "/CommonLibSSE/RE",    4,   0),
+            ("NiPointer<RE::Actor>", "/CommonLibSSE/RE", 8, 1),
+            ("BSTArray<RE::BSTTuple<unsigned int, RE::NiPointer<RE::ActorKnowledge>>, RE::BSTArrayHeapAllocator>", "/CommonLibSSE/RE", 24, 3),
         ]:
             dt = dtm.getDataType(CategoryPath(cat_path), type_name)
             if dt is None:

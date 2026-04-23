@@ -133,13 +133,19 @@ def run_version(version, symbols_json, fallback_symbols_json='[]', ccls_binary=N
         _tmpl = _process_templates(structs)
         template_source = _tmpl.combined_source()
 
+        _created = 0
         for _orig, _display in _tmpl.template_map.items():
             if _display not in structs and _display not in enums:
-                structs[_display] = {'name': _display, 'full_name': _display, 'size': 0,
+                _lt = _display.find('<')
+                _last_sep = _display.rfind('::', 0, _lt) if _lt >= 0 else _display.rfind('::')
+                _short = _display[_last_sep + 2:] if _last_sep >= 0 else _display
+                structs[_display] = {'name': _short, 'full_name': _display, 'size': 0,
                                      'category': category, 'fields': [], 'bases': [],
                                      'has_vtable': False}
+                _created += 1
         if _tmpl.template_map:
-            print('Discovered {} template instantiation aliases'.format(len(_tmpl.template_map)))
+            print('Discovered {} template instantiation aliases ({} new placeholders)'.format(
+                len(_tmpl.template_map), _created))
 
     except ImportError:
         template_source = ''

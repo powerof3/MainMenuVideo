@@ -71,6 +71,23 @@ _CLANG_TYPE_MAP: Dict[str, str] = {
 _KW_RE = re.compile(r'\b(?:class|struct|union|enum)\s+')
 
 
+def _short_and_category(qual_name: str) -> Tuple[str, str]:
+    """Derive the short type name and Ghidra category path from a qualified name.
+
+    Splits on the last ``::`` before the first ``<`` so template arguments
+    like ``RE::NiPointer<RE::Actor>`` stay intact.
+    """
+    lt = qual_name.find('<')
+    last_sep = qual_name.rfind('::', 0, lt) if lt >= 0 else qual_name.rfind('::')
+    if last_sep >= 0:
+        short = qual_name[last_sep + 2:]
+        cat = "/CommonLibSSE/" + qual_name[:last_sep].replace("::", "/")
+    else:
+        short = qual_name
+        cat = "/CommonLibSSE"
+    return short, cat
+
+
 def _split_tmpl_args(inner: str) -> List[str]:
     args: List[str] = []
     depth = 0
@@ -494,7 +511,7 @@ def _convert_enums(raw_enums: List[dict]) -> Dict[str, dict]:
     out: Dict[str, dict] = {}
     for e in raw_enums:
         full_name = e["qualName"]
-        short_name = e["shortName"]
+        short_name, category = _short_and_category(full_name)
 
         # Determine size from underlyingType or the explicit size field
         size = e.get("size", 4)
@@ -505,11 +522,6 @@ def _convert_enums(raw_enums: List[dict]) -> Dict[str, dict]:
             prim_size = _PRIM_SIZES.get(underlying.strip())
             if prim_size:
                 size = prim_size
-
-        # Derive category from the namespace path
-        # e.g. "RE::FormType" -> "/CommonLibSSE/RE"
-        ns_parts = full_name.split("::")[:-1]
-        category = "/CommonLibSSE/" + "/".join(ns_parts) if ns_parts else "/CommonLibSSE"
 
         values: List[Tuple[str, int]] = []
         for v in e.get("values", []):
@@ -618,10 +630,7 @@ def _convert_records(raw_records: List[dict]) -> Dict[str, dict]:
     out: Dict[str, dict] = {}
     for r in raw_records:
         full_name = r["qualName"]
-        short_name = r["shortName"]
-
-        ns_parts = full_name.split("::")[:-1]
-        category = "/CommonLibSSE/" + "/".join(ns_parts) if ns_parts else "/CommonLibSSE"
+        short_name, category = _short_and_category(full_name)
 
         bases: List[str] = []
         for b in r.get("bases", []):
@@ -707,17 +716,15 @@ def _convert_typedefs(
     """
     for td in raw_typedefs:
         full_name = td["qualName"]
-        short_name = td["shortName"]
         if full_name in enums or full_name in structs:
             continue
+
+        short_name, category = _short_and_category(full_name)
 
         target_usr = td.get("targetUsr", 0)
         target_qual = td.get("targetQualName", "")
         underlying = td.get("underlyingType", "")
         target_canonical = target_qual if target_qual else underlying
-
-        ns_parts = full_name.split("::")[:-1]
-        category = "/CommonLibSSE/" + "/".join(ns_parts) if ns_parts else "/CommonLibSSE"
 
         # Pointer types -> 8 bytes
         if target_canonical.endswith("*"):
