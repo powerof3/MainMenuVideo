@@ -133,13 +133,16 @@ with pyghidra.open_project(PROJECT_DIR, PROJECT_NAME, create=True) as project:
 
         # Spot-check specific known types.
         # Thresholds use total component count (includes unnamed padding bytes).
+        # The clang.exe record layout backend produces compact, fully-typed
+        # fields (embedded structs are single components), so thresholds reflect
+        # named-field counts rather than byte-granular sub-field expansion.
         print("\n--- Type spot-checks ---")
         from ghidra.program.model.data import CategoryPath
         spot_ok = True
         for type_name, cat_path, min_bytes, min_comps in [
-            ("Actor",           "/CommonLibSSE/RE", 680, 110),
-            ("TESObjectREFR",   "/CommonLibSSE/RE", 140,  25),
-            ("PlayerCharacter", "/CommonLibSSE/RE", 3000, 500),
+            ("Actor",           "/CommonLibSSE/RE", 680, 85),
+            ("TESObjectREFR",   "/CommonLibSSE/RE", 140,  18),
+            ("PlayerCharacter", "/CommonLibSSE/RE", 3000, 260),
             ("ActorValue",      "/CommonLibSSE/RE",    4,   0),
             ("NiPointer<RE::Actor>", "/CommonLibSSE/RE", 8, 1),
             ("BSTArray<RE::BSTTuple<unsigned int, RE::NiPointer<RE::ActorKnowledge>>, RE::BSTArrayHeapAllocator>", "/CommonLibSSE/RE", 24, 3),

@@ -394,25 +394,14 @@ def patch_proto_templates(proto: str, template_map: Dict[str, str]) -> str:
 
 def process_template_types(
     structs: dict,
-    extra_types: Optional[dict] = None,
     sig_strings: Optional[List[str]] = None,
 ) -> TemplateResult:
     """Scan for template instantiation names and build aliases.
 
-    This is the single entry point called from :mod:`parse_commonlib_types`
-    and :mod:`extract_signatures`.
-
     Parameters
     ----------
     structs:
-        Struct info dict from ``parse_commonlib_types.py``.  Pass ``{}`` when
-        only scanning signature strings.
-    extra_types:
-        Dict loaded from ``extra_types.json``.  When provided, newly
-        discovered sanitized alias names are inserted into
-        ``extra_types['opaques']`` so they are forwarded to the DataTypeManager
-        as opaque structs.  Modified **in place**; existing entries are
-        preserved.
+        Struct info dict.  Pass ``{}`` when only scanning signature strings.
     sig_strings:
         Optional list of raw C++ signature strings to scan (e.g. all
         ``symbol['sig']`` values from the address-symbol table).

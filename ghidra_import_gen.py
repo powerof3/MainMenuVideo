@@ -55,6 +55,29 @@ def _type_str_size(type_str: str) -> int:
 
 
 # ---------------------------------------------------------------------------
+# Base-class name resolution
+# ---------------------------------------------------------------------------
+
+def _resolve_base(by_name: dict, name: str):
+    """Look up a base class by name, handling namespace prefix and template types."""
+    st = by_name.get(name)
+    if st:
+        return st
+    # Try stripping root namespace prefix (e.g. RE::Actor -> Actor)
+    idx = name.find('::')
+    if idx >= 0 and '<' not in name[:idx]:
+        st = by_name.get(name[idx + 2:])
+        if st:
+            return st
+    if '<' not in name:
+        short = name.split('::')[-1]
+        st = by_name.get(short)
+        if st:
+            return st
+    return None
+
+
+# ---------------------------------------------------------------------------
 # Vtable struct building
 # ---------------------------------------------------------------------------
 
@@ -72,8 +95,14 @@ def build_vtable_structs(structs: dict) -> dict:
     sig_memo = {}
 
     def _primary_base_st(st):
-        for base_ref in st.get('bases', []):
-            return by_name.get(base_ref) or by_name.get(base_ref.split('::')[-1])
+        pdb_bases = st.get('pdb_bases', [])
+        if pdb_bases:
+            primary_name, primary_off = pdb_bases[0]
+            if primary_off == 0:
+                return _resolve_base(by_name, primary_name)
+        else:
+            for base_ref in st.get('bases', []):
+                return _resolve_base(by_name, base_ref)
         return None
 
     def get_slots(full_name, depth=0):
@@ -169,7 +198,11 @@ def inject_vtable_fields(structs: dict, vtable_structs: dict) -> None:
 
 
 def flatten_structs(structs: dict) -> None:
-    """Expand base class fields into derived structs (primary base chain only)."""
+    """Expand base class fields into derived structs.
+
+    Uses pdb_bases ([(base_name, base_offset)]) when available for accurate
+    multi-base placement; falls back to assuming first base starts at offset 0.
+    """
     by_name = {}
     for st in structs.values():
         by_name[st['full_name']] = st
@@ -188,17 +221,37 @@ def flatten_structs(structs: dict) -> None:
             return []
         memo[full_name] = []
         combined = {}
-        for base_ref in st.get('bases', []):
-            base_st = by_name.get(base_ref) or by_name.get(base_ref.split('::')[-1])
-            if not base_st or base_st['size'] <= 1:
-                continue
-            for f in get_flat(base_st['full_name'], depth + 1):
-                if f['offset'] not in combined:
-                    combined[f['offset']] = f
-            break
+
+        pdb_bases = st.get('pdb_bases', [])
+        if pdb_bases:
+            for base_name, base_off in pdb_bases:
+                base_st = _resolve_base(by_name, base_name)
+                if not base_st:
+                    continue
+                for f in get_flat(base_st['full_name'], depth + 1):
+                    abs_off = base_off + f['offset']
+                    if abs_off not in combined:
+                        field_copy = dict(f, offset=abs_off)
+                        if f['name'] == '__vftable' and base_off > 0:
+                            field_copy['name'] = '__vftable_' + base_st['name']
+                        combined[abs_off] = field_copy
+        else:
+            for base_ref in st.get('bases', []):
+                base_st = _resolve_base(by_name, base_ref)
+                if not base_st or base_st['size'] <= 1:
+                    continue
+                for f in get_flat(base_st['full_name'], depth + 1):
+                    if f['offset'] not in combined:
+                        combined[f['offset']] = f
+                break
+
         for f in st['fields']:
             combined[f['offset']] = f
         flat = sorted(combined.values(), key=lambda f: f['offset'])
+        for i in range(len(flat) - 1):
+            end = flat[i]['offset'] + flat[i]['size']
+            if end > flat[i + 1]['offset']:
+                flat[i] = dict(flat[i], size=flat[i + 1]['offset'] - flat[i]['offset'])
         memo[full_name] = flat
         return flat
 
@@ -595,7 +648,7 @@ def _import_types():
         dt = dtm.addDataType(e, CONFLICT)
         created[name] = dt
         created[category + '/' + name] = dt
-        ns = category[len('/CommonLibSSE/'):].replace('/', '::')
+        ns = '::'.join(category.strip('/').split('/')[1:])
         if ns:
             created[ns + '::' + name] = dt
     print('Created {} enums'.format(len(ENUMS)))
@@ -636,7 +689,7 @@ def _import_types():
         dt = dtm.addDataType(s, CONFLICT)
         created[name] = dt
         created[category + '/' + name] = dt
-        ns = category[len('/CommonLibSSE/'):].replace('/', '::')
+        ns = '::'.join(category.strip('/').split('/')[1:])
         if ns:
             created[ns + '::' + name] = dt
     _display_to_c = {}
@@ -717,9 +770,9 @@ def _import_symbols():
                 cu = currentProgram.getListing().getCodeUnitAt(addr)
                 if cu:
                     if final_name.startswith('RTTI_'):
-                        cu.setComment(0, 'Source: CommonLibSSE (Offsets_RTTI.h)')
+                        cu.setComment(0, 'Source: ' + PROJECT_NAME + ' (Offsets_RTTI.h)')
                     elif final_name.startswith('VTABLE_'):
-                        cu.setComment(0, 'Source: CommonLibSSE (Offsets_VTABLE.h)')
+                        cu.setComment(0, 'Source: ' + PROJECT_NAME + ' (Offsets_VTABLE.h)')
                     elif s.get('src'):
                         cu.setComment(0, 'Source: ' + s['src'])
         except: pass
@@ -747,8 +800,8 @@ def _import_symbols():
                     elif ae_id:
                         comment_parts.append('REL::ID(' + str(ae_id) + ')')
                     src = s.get('src', '')
-                    if src == 'CommonLibSSE':
-                        comment_parts.append('Source: CommonLibSSE headers')
+                    if src == PROJECT_NAME:
+                        comment_parts.append('Source: ' + PROJECT_NAME + ' headers')
                     elif src == 'skyrimae.rename':
                         comment_parts.append('Source: AE rename database (fallback)')
                     elif src == 'SkyrimSE.pdb':
@@ -878,7 +931,7 @@ def _import_vtable_names():
                     cu.setComment(0, (
                         'VTABLE ' + class_full_name + '::' + slot_name + '\\n' +
                         'Slot offset: +0x{:X}\\n'.format(slot_off) +
-                        'Source: CommonLibSSE vtable walk'
+                        'Source: ' + PROJECT_NAME + ' vtable walk'
                     ))
                 if slot_ret is not None and slot_params is not None:
                     try:
@@ -954,7 +1007,7 @@ def _import_vtable_names():
                         cu.setComment(0, (
                             'VTABLE ' + class_short + '::' + func_name + '\\n' +
                             'Slot offset: +0x{:X}\\n'.format((slot_idx - 1) * ptr_size) +
-                            'Source: CommonLibSSE vtable walk (unnamed)'
+                            'Source: ' + PROJECT_NAME + ' vtable walk (unnamed)'
                         ))
                     unnamed_named += 1
                 except Exception:
@@ -1030,6 +1083,7 @@ def generate_script(
     symbols_json: str,
     fallback_symbols_json: str = '[]',
     template_source: str = '',
+    project_name: str = 'CommonLibSSE',
     script_header: Optional[str] = None,
     script_footer: Optional[str] = None,
 ) -> Tuple[int, int]:
@@ -1038,7 +1092,7 @@ def generate_script(
     Parameters
     ----------
     enums, structs, vtable_structs:
-        Type data dicts produced by the ccle_client + build_vtable_structs pipeline.
+        Type data dicts produced by the clang_types + build_vtable_structs pipeline.
     output_path:
         File path for the generated .py script.
     version:
@@ -1047,6 +1101,8 @@ def generate_script(
         JSON-encoded symbol arrays.
     template_source:
         Python source for TEMPLATE_TYPE_MAP/TEMPLATE_C_ALIAS_MAP/_patch_templates.
+    project_name:
+        Human-readable project name for comment strings (default 'CommonLibSSE').
     script_header, script_footer:
         Override the default Ghidra Jython header/footer.
     """
@@ -1058,6 +1114,7 @@ def generate_script(
     lines = [header]
 
     lines.append('VERSION = {}'.format(repr(version)))
+    lines.append('PROJECT_NAME = {}'.format(repr(project_name)))
     lines.append('')
 
     # VTABLES
@@ -1154,10 +1211,10 @@ def generate_script(
         for s in _fb:
             sig_info = _vtable_sigs.get(s.get('n'))
             if sig_info:
-                s['src'] = 'CommonLibSSE'
+                s['src'] = project_name
                 _upgraded += 1
         if _upgraded:
-            print('  Upgraded {} vtable-known fallback symbols to CommonLibSSE source'.format(_upgraded))
+            print('  Upgraded {} vtable-known fallback symbols to {} source'.format(_upgraded, project_name))
             fallback_symbols_json = json.dumps(_fb, separators=(',', ':'))
 
     lines.append('FALLBACK_SYMBOLS = ' + fallback_symbols_json)

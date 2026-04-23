@@ -1,13 +1,15 @@
 """Regex-based relocation/symbol scanner for CommonLibSSE.
 
-Parses raw CommonLibSSE source files with regex to extract:
+Parses raw source files with regex to extract:
   - REL::Relocation<T> VarDecls with RELOCATION_ID(SE, AE) → function symbols
   - RTTI_* / VTABLE_* labels
-  - RE::Offset:: namespace IDs
+  - Offset:: namespace IDs
   - Static method detection
 
 Key advantage: RELOCATION_ID(SE, AE) is parsed before preprocessor expansion,
 giving both SE and AE IDs in a single pass (no two-pass build + merge needed).
+
+Root namespace is configurable (default 'RE') for project-agnostic use.
 """
 from __future__ import annotations
 
@@ -137,6 +139,7 @@ def _scan_header_relocations(
     offset_id_map: Dict[str, int],
     se_offset_map: Dict[str, int] = None,
     ae_offset_map: Dict[str, int] = None,
+    root_namespace: str = 'RE',
 ) -> Tuple[List[dict], List[dict], Set[Tuple[str, str]]]:
     """Scan a single header file for REL::Relocation, RTTI, VTABLE declarations.
 
@@ -170,8 +173,9 @@ def _scan_header_relocations(
                 full_cls = ctx.full_class
                 if full_cls:
                     bare = full_cls
-                    if bare.startswith('RE::'):
-                        bare = bare[4:]
+                    _ns_pre = root_namespace + '::'
+                    if bare.startswith(_ns_pre):
+                        bare = bare[len(_ns_pre):]
                     static_methods.add((bare, method_name))
 
     # Now do content-level (multi-line-aware) regex scans
@@ -198,8 +202,9 @@ def _scan_header_relocations(
 
             # Symbol name = enclosing class method or var name
             sym_class = ctx2.full_class
-            if sym_class and sym_class.startswith('RE::'):
-                sym_class = sym_class[4:]
+            _ns_pre2 = root_namespace + '::'
+            if sym_class and sym_class.startswith(_ns_pre2):
+                sym_class = sym_class[len(_ns_pre2):]
 
             func_syms.append({
                 'name': var_name,
@@ -232,8 +237,8 @@ def _scan_header_relocations(
                 continue
 
             sym_class = ctx2.full_class
-            if sym_class and sym_class.startswith('RE::'):
-                sym_class = sym_class[4:]
+            if sym_class and sym_class.startswith(_ns_pre2):
+                sym_class = sym_class[len(_ns_pre2):]
 
             func_syms.append({
                 'name': var_name,
@@ -452,6 +457,7 @@ def _scan_src_relocations(
     offset_id_map: Dict[str, int],
     se_offset_map: Dict[str, int] = None,
     ae_offset_map: Dict[str, int] = None,
+    root_namespace: str = 'RE',
 ) -> List[dict]:
     """Scan CommonLibSSE src/**/*.cpp for REL::Relocation + RELOCATION_ID."""
     if se_offset_map is None:
@@ -489,8 +495,9 @@ def _scan_src_relocations(
             if func_m and '::' in func_m.group(1):
                 qual = func_m.group(1).rstrip(':')
                 fname = func_m.group(2)
-                if qual.startswith('RE::'):
-                    qual = qual[4:]
+                _ns_pre = root_namespace + '::'
+                if qual.startswith(_ns_pre):
+                    qual = qual[len(_ns_pre):]
                 if '{' in line[func_m.end()-1:]:
                     current_func_class = qual
                     current_func_name = fname
@@ -565,8 +572,9 @@ def collect_relocations(
     re_include: str,
     addr_lib,
     verbose: bool = False,
+    root_namespace: str = 'RE',
 ) -> Tuple[List[dict], List[dict], Dict[str, int], Set[Tuple[str, str]]]:
-    """Scan CommonLibSSE headers for relocation symbols.
+    """Scan headers for relocation symbols.
 
     Returns (func_syms, label_syms, offset_id_map, static_methods).
     Each func_sym has both se_off and ae_off (from RELOCATION_ID).
@@ -602,7 +610,8 @@ def collect_relocations(
             continue
         funcs, labels, statics = _scan_header_relocations(h_path, addr_lib, offset_id_map,
                                                             se_offset_map=se_offset_map,
-                                                            ae_offset_map=ae_offset_map)
+                                                            ae_offset_map=ae_offset_map,
+                                                            root_namespace=root_namespace)
         all_func_syms.extend(funcs)
         all_label_syms.extend(labels)
         all_static_methods |= statics
@@ -640,14 +649,16 @@ def collect_src_relocations(
     se_offset_map: Dict[str, int] = None,
     ae_offset_map: Dict[str, int] = None,
     verbose: bool = False,
+    root_namespace: str = 'RE',
 ) -> List[dict]:
-    """Scan CommonLibSSE src/**/*.cpp for relocation symbols.
+    """Scan src/**/*.cpp for relocation symbols.
 
     Returns func_syms with both se_off and ae_off populated.
     """
     func_syms = _scan_src_relocations(src_dir, addr_lib, offset_id_map,
                                        se_offset_map=se_offset_map,
-                                       ae_offset_map=ae_offset_map)
+                                       ae_offset_map=ae_offset_map,
+                                       root_namespace=root_namespace)
 
     # Dedup
     seen = set()
