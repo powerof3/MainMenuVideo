@@ -16,6 +16,8 @@ import os
 import sys
 import re
 
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'core'))
+
 from address_library import AddressLibrary
 from pdb_symbols import load_pdb_names as load_se_pdb_names
 from ghidra_import_gen import (
@@ -30,7 +32,7 @@ from ghidra_import_gen import (
 # ---------------------------------------------------------------------------
 
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
-PROJECT_DIR = os.path.dirname(SCRIPT_DIR)
+PROJECT_DIR = os.path.dirname(os.path.dirname(SCRIPT_DIR))
 COMMONLIB_INCLUDE = os.path.join(PROJECT_DIR, 'extern', 'CommonLibSSE', 'include')
 SKYRIM_H = os.path.join(COMMONLIB_INCLUDE, 'RE', 'Skyrim.h')
 RE_INCLUDE = os.path.join(COMMONLIB_INCLUDE, 'RE')

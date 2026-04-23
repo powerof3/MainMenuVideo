@@ -202,8 +202,9 @@ def _record_type_to_pipeline(raw, root_ns='RE'):
 # Include path and stub generation
 # ---------------------------------------------------------------------------
 
-def _setup_include_paths(commonlib_include):
-    script_dir = os.path.dirname(os.path.abspath(__file__))
+def _setup_include_paths(commonlib_include, clang_stub_dir=None):
+    if clang_stub_dir is None:
+        clang_stub_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), '_clang_stubs')
 
     _vcpkg_include = None
     _vcpkg_root = os.environ.get('VCPKG_ROOT', '')
@@ -218,24 +219,23 @@ def _setup_include_paths(commonlib_include):
     if _vcpkg_include:
         third_party = _vcpkg_include
     else:
-        stub_dir = os.path.join(script_dir, '_clang_stubs')
-        os.makedirs(os.path.join(stub_dir, 'binary_io'), exist_ok=True)
-        os.makedirs(os.path.join(stub_dir, 'spdlog'), exist_ok=True)
+        os.makedirs(os.path.join(clang_stub_dir, 'binary_io'), exist_ok=True)
+        os.makedirs(os.path.join(clang_stub_dir, 'spdlog'), exist_ok=True)
 
-        bio_stub = os.path.join(stub_dir, 'binary_io', 'file_stream.hpp')
+        bio_stub = os.path.join(clang_stub_dir, 'binary_io', 'file_stream.hpp')
         if not os.path.isfile(bio_stub):
             with open(bio_stub, 'w') as f:
                 f.write('#pragma once\nnamespace binary_io { class file_istream {}; class file_ostream {}; }\n')
 
-        spdlog_stub = os.path.join(stub_dir, 'spdlog', 'spdlog.h')
+        spdlog_stub = os.path.join(clang_stub_dir, 'spdlog', 'spdlog.h')
         if not os.path.isfile(spdlog_stub):
             with open(spdlog_stub, 'w') as f:
                 f.write('#pragma once\nnamespace spdlog { class logger {}; }\n')
 
-        third_party = stub_dir
+        third_party = clang_stub_dir
 
     # Shadow spdlog/details/windows_include.h to undef REX::W32 macro conflicts
-    win_stub_dir = os.path.join(script_dir, '_clang_stubs')
+    win_stub_dir = clang_stub_dir
     os.makedirs(os.path.join(win_stub_dir, 'spdlog', 'details'), exist_ok=True)
     os.makedirs(os.path.join(win_stub_dir, 'spdlog', 'sinks'), exist_ok=True)
 
