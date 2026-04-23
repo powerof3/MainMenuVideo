@@ -171,7 +171,7 @@ def _qualify_re(name, root_ns='RE'):
         return '{}{}{}'.format(leading, name, trailing)
     parts = name.split('::')
     first = parts[0].strip()
-    _known_ns = {root_ns, 'std', 'WinAPI', 'SKSE'}
+    _known_ns = {root_ns, 'std', 'WinAPI', 'SKSE', 'REX'}
     if first in _PRIM_BARE or first in _known_ns:
         return '{}{}{}'.format(leading, name, trailing)
     return '{}{}{}{}'.format(leading, root_ns + '::', name, trailing)
@@ -587,9 +587,30 @@ def _parse_layouts_with_bases(text, root_ns='RE'):
                 has_vtable = True
                 continue
 
-            # Field
+            # Field — plain offset (e.g. "  0 |") or bitfield ("0:0-7 |")
             m_off = re.match(r'^\s*(\d+)\s+\|', line_r)
+            m_bf = None
             if not m_off:
+                m_bf = re.match(r'^\s*(\d+):(\d+)-(\d+)\s+\|', line_r)
+                if not m_bf:
+                    continue
+
+            if m_bf:
+                bf_byte = int(m_bf.group(1))
+                m_tn = re.match(
+                    r'^(?:(?:class|struct|union|enum)\s+)?(.+?)\s+(\w+)\s*$', content)
+                if not m_tn:
+                    continue
+                fname = m_tn.group(2)
+                if not fields or '_bf_byte' not in fields[-1]:
+                    fields.append({
+                        'name': fname,
+                        'offset': bf_byte,
+                        'size': 0,
+                        'type': '',
+                        '_bf_byte': bf_byte,
+                        '_bf_total': 0,
+                    })
                 continue
 
             is_record_field = bool(re.match(r'^(?:class|struct|union)\s+', content))
@@ -614,7 +635,19 @@ def _parse_layouts_with_bases(text, root_ns='RE'):
                 value_field_indents.append(indent)
 
         if type_name:
+            _bf_indices = set()
+            for i, f in enumerate(fields):
+                if '_bf_byte' in f:
+                    if '_bf_total' in f:
+                        del f['_bf_total']
+                    del f['_bf_byte']
+                    f['type'] = ''
+                    _bf_indices.add(i)
             _backfill_sizes(fields, sizeof_bytes)
+            _SIZE_TO_TYPE = {1: 'u8', 2: 'u16', 4: 'u32', 8: 'u64'}
+            for i in _bf_indices:
+                f = fields[i]
+                f['type'] = _SIZE_TO_TYPE.get(f['size'], 'u32')
             results[type_name] = {
                 'size': sizeof_bytes,
                 'fields': fields,
@@ -745,9 +778,7 @@ def _merge_ast_and_layouts(ast_classes, layouts, re_include_path,
     # Add layout-only types (templates, types not in AST class list)
     ns_prefix = root_ns + '::'
     for lname, ldata in layouts.items():
-        if not lname.startswith(ns_prefix):
-            continue
-        bare = lname[len(ns_prefix):]
+        bare = lname[len(ns_prefix):] if lname.startswith(ns_prefix) else lname
         if bare in structs or lname in structs:
             continue
 
