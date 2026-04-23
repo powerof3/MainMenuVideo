@@ -76,43 +76,20 @@ VERSIONS = {
 }
 
 
-_PIPELINE_TO_C = {
-    'void': 'void', 'bool': 'bool',
-    'i8': 'char', 'u8': 'uchar', 'i16': 'short', 'u16': 'ushort',
-    'i32': 'int', 'u32': 'uint', 'i64': 'longlong', 'u64': 'ulonglong',
-    'f32': 'float', 'f64': 'double', 'ptr': 'void *',
-}
-
-
-def _pipeline_type_to_c(t):
-    """Convert pipeline type descriptor to C type for CParserUtils."""
-    if t in _PIPELINE_TO_C:
-        return _PIPELINE_TO_C[t]
-    if t.startswith('ptr:struct:'):
-        name = t[11:]
-        return 'void *' if '<' in name else name.split('::')[-1] + ' *'
-    if t.startswith('ptr:enum:'):
-        return t[9:].split('::')[-1] + ' *'
-    if t.startswith('struct:'):
-        name = t[7:]
-        return 'void *' if '<' in name else name.split('::')[-1]
-    if t.startswith('enum:'):
-        return t[5:].split('::')[-1]
-    return 'void *'
-
 
 def _enrich_symbols_with_sigs(symbols_json, structs):
     """Cross-reference symbols with AST method signatures.
 
     For each function symbol like 'Actor::AddSpell', look up the method
-    signature from structs['Actor']['methods']['AddSpell'] and build a
-    C prototype string for CParserUtils.
+    signature from structs['Actor']['methods']['AddSpell'] and store
+    structured pipeline type data for direct FunctionDefinitionDataType
+    construction (bypasses CParserUtils).
     """
     import json as _json
     symbols = _json.loads(symbols_json)
     enriched = 0
     for sym in symbols:
-        if sym['t'] != 'func' or sym.get('sig'):
+        if sym['t'] != 'func' or sym.get('sd'):
             continue
         name = sym['n']
         if '::' not in name:
@@ -128,14 +105,7 @@ def _enrich_symbols_with_sigs(symbols_json, structs):
         if not info:
             continue
         ret, params, is_static = info
-        ret_c = _pipeline_type_to_c(ret)
-        param_parts = []
-        for pname, ptype in params:
-            param_parts.append(_pipeline_type_to_c(ptype) + ' ' + pname)
-        sig = '{} {}({})'.format(ret_c, method_name, ', '.join(param_parts))
-        if is_static:
-            sig = 'static ' + sig
-        sym['sig'] = sig
+        sym['sd'] = [ret, params, 1 if is_static else 0]
         enriched += 1
     if enriched:
         print('Enriched {} symbols with AST method signatures'.format(enriched))

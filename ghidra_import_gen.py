@@ -388,6 +388,35 @@ def make_padding(size):
     return ArrayDataType(_BYTE, size, 1)
 
 
+def apply_structured_sig(sd, func_name, addr, fm):
+    """Apply a structured signature using FunctionDefinitionDataType.
+
+    sd is [ret_type, [[pname, ptype], ...], is_static] with pipeline type
+    descriptors that resolve_type() understands.  Bypasses CParserUtils
+    entirely — no C parsing errors.
+    """
+    ret_pipeline, params_list, is_static = sd
+    simple_name = func_name.split('::')[-1] if '::' in func_name else func_name
+    fdef = FunctionDefinitionDataType(CategoryPath('/'), simple_name, dtm)
+    ret_dt = resolve_type(ret_pipeline)
+    if ret_dt:
+        fdef.setReturnType(ret_dt)
+    param_defs = []
+    if '::' in func_name and not is_static:
+        class_name = func_name.rsplit('::', 1)[0].split('::')[-1]
+        this_dt = created.get(class_name)
+        this_ptr = dtm.getPointer(this_dt, 8) if this_dt else _PTR
+        param_defs.append(ParameterDefinitionImpl('this', this_ptr, ''))
+    for pname, ptype in params_list:
+        pdt = resolve_type(ptype) or _PTR
+        param_defs.append(ParameterDefinitionImpl(pname, pdt, ''))
+    if param_defs:
+        fdef.setArguments(param_defs)
+    cmd = ApplyFunctionSignatureCmd(addr, fdef, SourceType.USER_DEFINED, True, False)
+    cmd.applyTo(currentProgram)
+    return True
+
+
 def convert_sig_to_ghidra(sig, func_name):
     """Convert a C++ signature to a Ghidra-compatible C prototype."""
     if not sig or sig == 'func_t':
@@ -811,8 +840,16 @@ def _import_symbols():
                         if cu:
                             cu.setComment(0, '\\n'.join(comment_parts))
 
-                    if 'sig' in s and s['sig']:
-                        proto = convert_sig_to_ghidra(s['sig'], final_name)
+                    sd = s.get('sd')
+                    sig = s.get('sig', '')
+                    if sd:
+                        try:
+                            apply_structured_sig(sd, final_name, addr, fm)
+                            count_sig += 1
+                        except:
+                            count_sig_fail += 1
+                    elif sig:
+                        proto = convert_sig_to_ghidra(sig, final_name)
                         if proto:
                             applied = False
                             try:
@@ -846,38 +883,6 @@ def _import_symbols():
 
     print('Labels: ' + str(count_sym) + ', Functions: ' + str(count_func))
     print('Signatures applied: ' + str(count_sig) + ', failed: ' + str(count_sig_fail))
-
-
-def _type_to_c(type_str):
-    """Convert internal type descriptor to a C type name for CParserUtils."""
-    if type_str == 'void':  return 'void'
-    if type_str == 'bool':  return 'bool'
-    if type_str == 'i8':    return 'char'
-    if type_str == 'u8':    return 'uchar'
-    if type_str == 'i16':   return 'short'
-    if type_str == 'u16':   return 'ushort'
-    if type_str == 'i32':   return 'int'
-    if type_str == 'u32':   return 'uint'
-    if type_str == 'i64':   return 'longlong'
-    if type_str == 'u64':   return 'ulonglong'
-    if type_str == 'f32':   return 'float'
-    if type_str == 'f64':   return 'double'
-    if type_str == 'ptr':   return 'void *'
-    if type_str.startswith('ptr:struct:'):
-        name = type_str[11:]
-        if '<' in name:
-            return 'void *'
-        return name.split('::')[-1] + ' *'
-    if type_str.startswith('ptr:enum:'):
-        return type_str[9:].split('::')[-1] + ' *'
-    if type_str.startswith('struct:'):
-        name = type_str[7:]
-        if '<' in name:
-            return 'void *'
-        return name.split('::')[-1]
-    if type_str.startswith('enum:'):
-        return type_str[5:].split('::')[-1]
-    return 'void *'
 
 
 def _import_vtable_names():
@@ -922,37 +927,39 @@ def _import_vtable_names():
                     no_func += 1
                     continue
                 curr = func.getName()
-                if not (curr.startswith('FUN_') or curr.startswith('sub_')):
+                was_named = not (curr.startswith('FUN_') or curr.startswith('sub_'))
+                if was_named:
                     already_named += 1
-                    continue
-                func.setName(class_short + '::' + slot_name, SourceType.USER_DEFINED)
-                cu = currentProgram.getListing().getCodeUnitAt(func_addr)
-                if cu:
-                    cu.setComment(0, (
-                        'VTABLE ' + class_full_name + '::' + slot_name + '\\n' +
-                        'Slot offset: +0x{:X}\\n'.format(slot_off) +
-                        'Source: ' + PROJECT_NAME + ' vtable walk'
-                    ))
+                else:
+                    func.setName(class_short + '::' + slot_name, SourceType.USER_DEFINED)
+                    cu = currentProgram.getListing().getCodeUnitAt(func_addr)
+                    if cu:
+                        cu.setComment(0, (
+                            'VTABLE ' + class_full_name + '::' + slot_name + '\\n' +
+                            'Slot offset: +0x{:X}\\n'.format(slot_off) +
+                            'Source: ' + PROJECT_NAME + ' vtable walk'
+                        ))
+                    named_vfuncs += 1
                 if slot_ret is not None and slot_params is not None:
-                    try:
-                        param_parts = [class_short + ' * this']
-                        for pname, ptype in slot_params:
-                            param_parts.append(_type_to_c(ptype) + ' ' + pname)
-                        proto = (_type_to_c(slot_ret) + ' ' + slot_name +
-                                 '(' + ', '.join(param_parts) + ')')
-                        proto = _patch_templates(proto)
-                        for _vt_proto in (proto, sanitize_unknown_types(proto)):
-                            try:
-                                func_def = CParserUtils.parseSignature(None, currentProgram, _vt_proto, True)
-                                if func_def:
-                                    ApplyFunctionSignatureCmd(func_addr, func_def,
-                                        SourceType.USER_DEFINED, True, False).applyTo(currentProgram)
-                                    break
-                            except Exception:
-                                pass
-                    except Exception:
-                        pass
-                named_vfuncs += 1
+                    has_sig = func.getSignature().getReturnType().getClass().getSimpleName() != 'DefaultDataType'
+                    if not has_sig:
+                        try:
+                            fdef = FunctionDefinitionDataType(CategoryPath('/'), slot_name, dtm)
+                            ret_dt = resolve_type(slot_ret)
+                            if ret_dt:
+                                fdef.setReturnType(ret_dt)
+                            pdefs = []
+                            this_dt = created.get(class_short)
+                            this_ptr = dtm.getPointer(this_dt, 8) if this_dt else _PTR
+                            pdefs.append(ParameterDefinitionImpl('this', this_ptr, ''))
+                            for pname, ptype in slot_params:
+                                pdt = resolve_type(ptype) or _PTR
+                                pdefs.append(ParameterDefinitionImpl(pname, pdt, ''))
+                            fdef.setArguments(pdefs)
+                            ApplyFunctionSignatureCmd(func_addr, fdef,
+                                SourceType.USER_DEFINED, True, False).applyTo(currentProgram)
+                        except Exception:
+                            pass
             except Exception:
                 read_fail += 1
     print('Named {} virtual functions from vtable addresses'.format(named_vfuncs))
@@ -1174,23 +1181,22 @@ def generate_script(
     lines.append(']')
     lines.append('')
 
-    # Build class::method -> signature lookup from method data
-    _method_sig_lookup = {}
+    # Build class::method -> structured signature lookup from method data
+    _method_sd_lookup = {}
     for st in structs.values():
         class_short = st['name']
         for mname, (ret, params) in st.get('method_sigs', {}).items():
             if ret and params is not None:
-                param_str = ', '.join('{} {}'.format(pt, pn) if pn else pt for pn, pt in params)
-                _method_sig_lookup[class_short + '::' + mname] = '{}({})'.format(ret, param_str)
+                _method_sd_lookup[class_short + '::' + mname] = [ret, params, 0]
 
-    # Inject signatures into symbol entries
+    # Inject structured signatures into symbol entries
     _syms = json.loads(symbols_json)
     _sig_count = 0
     for s in _syms:
-        if s['t'] == 'func' and not s.get('sig') and '::' in s.get('n', ''):
-            sig = _method_sig_lookup.get(s['n'])
-            if sig:
-                s['sig'] = sig
+        if s['t'] == 'func' and not s.get('sd') and not s.get('sig') and '::' in s.get('n', ''):
+            sd = _method_sd_lookup.get(s['n'])
+            if sd:
+                s['sd'] = sd
                 _sig_count += 1
     if _sig_count:
         symbols_json = json.dumps(_syms, separators=(',', ':'))
