@@ -15,14 +15,12 @@ Pipeline:
 import os
 import sys
 import re
-import struct
-import ctypes
 
+from pdb_symbols import AddressLibrary, load_pdb_names as load_se_pdb_names
 from ghidra_import_gen import (
     build_vtable_structs as _build_vtable_structs,
     inject_vtable_fields as _inject_vtable_fields,
     flatten_structs as _flatten_structs,
-    apply_known_template_layouts as _apply_known_template_layouts,
     generate_script,
 )
 
@@ -38,98 +36,8 @@ OUTPUT_DIR = os.path.join(SCRIPT_DIR, 'ghidrascripts')
 
 
 # ---------------------------------------------------------------------------
-# Address library / PDB / rename-DB utilities (inlined from extract_signatures)
+# AE rename database
 # ---------------------------------------------------------------------------
-
-class AddressLibrary:
-    """Loads address-library binary databases mapping RELOCATION_IDs to RVAs."""
-
-    def __init__(self):
-        self.se_db = {}
-        self.ae_db = {}
-
-    def load_bin(self, file_path):
-        if not os.path.exists(file_path):
-            return {}
-        db = {}
-        with open(file_path, 'rb') as f:
-            f.read(4)   # fmt
-            f.read(16)  # version
-            name_len = struct.unpack('<I', f.read(4))[0]
-            f.read(name_len)
-            ptr_size   = struct.unpack('<I', f.read(4))[0]
-            addr_count = struct.unpack('<I', f.read(4))[0]
-            pvid = 0; poffset = 0
-            for _ in range(addr_count):
-                type_byte = struct.unpack('<B', f.read(1))[0]
-                low = type_byte & 0xF; high = type_byte >> 4
-                if   low == 0: id_val = struct.unpack('<Q', f.read(8))[0]
-                elif low == 1: id_val = pvid + 1
-                elif low == 2: id_val = pvid + struct.unpack('<B', f.read(1))[0]
-                elif low == 3: id_val = pvid - struct.unpack('<B', f.read(1))[0]
-                elif low == 4: id_val = pvid + struct.unpack('<H', f.read(2))[0]
-                elif low == 5: id_val = pvid - struct.unpack('<H', f.read(2))[0]
-                elif low == 6: id_val = struct.unpack('<H', f.read(2))[0]
-                elif low == 7: id_val = struct.unpack('<I', f.read(4))[0]
-                tpoffset = (poffset // ptr_size) if (high & 8) != 0 else poffset
-                h_type = high & 7
-                if   h_type == 0: off_val = struct.unpack('<Q', f.read(8))[0]
-                elif h_type == 1: off_val = tpoffset + 1
-                elif h_type == 2: off_val = tpoffset + struct.unpack('<B', f.read(1))[0]
-                elif h_type == 3: off_val = tpoffset - struct.unpack('<B', f.read(1))[0]
-                elif h_type == 4: off_val = tpoffset + struct.unpack('<H', f.read(2))[0]
-                elif h_type == 5: off_val = tpoffset - struct.unpack('<H', f.read(2))[0]
-                elif h_type == 6: off_val = struct.unpack('<H', f.read(2))[0]
-                elif h_type == 7: off_val = struct.unpack('<I', f.read(4))[0]
-                if (high & 8) != 0: off_val *= ptr_size
-                db[id_val] = off_val; pvid = id_val; poffset = off_val
-        return db
-
-    def load_all(self, base_path):
-        self.se_db = self.load_bin(os.path.join(base_path, 'version-1-5-97-0.bin'))
-        self.ae_db = self.load_bin(os.path.join(base_path, 'versionlib-1-6-1170-0.bin'))
-
-
-def _undecorate(name):
-    """Demangle an MSVC-mangled symbol name using dbghelp.UnDecorateSymbolName."""
-    try:
-        buf = ctypes.create_string_buffer(512)
-        if ctypes.windll.dbghelp.UnDecorateSymbolName(name.encode(), buf, 512, 0x1000):
-            return buf.value.decode('ascii', errors='replace')
-    except Exception:
-        pass
-    return name
-
-
-def load_se_pdb_names(file_path):
-    """Parse a PDB file and return dict of rva -> name for all public function symbols."""
-    if not os.path.exists(file_path):
-        return {}
-
-    import pdbparse
-
-    pdb = pdbparse.parse(file_path)
-    dbi = pdb.STREAM_DBI
-    gsym = pdb.streams[dbi.DBIHeader.symrecStream]
-
-    sec_data = pdb.streams[dbi.DBIDbgHeader.snSectionHdr].data
-    sections = [struct.unpack_from('<I', sec_data, i * 40 + 12)[0]
-                for i in range(len(sec_data) // 40)]
-
-    result = {}
-    for name, rec in gsym.funcs.items():
-        if not (rec.symtype & 0x2) or not (1 <= rec.segment <= len(sections)):
-            continue
-        if name.startswith('?'):
-            name = _undecorate(name)
-        if re.match(r'^FUN_[0-9A-Fa-f]+$', name):
-            continue
-        name = re.sub(r'_14[0-9A-Fa-f]{6,8}$', '', name)
-        name = re.sub(r':{3,}', '::', name.replace('__', '::'))
-        result[sections[rec.segment - 1] + rec.offset] = name
-
-    return result
-
 
 def load_ae_rename_db(file_path, ae_db):
     """Load skyrimae.rename: lines of '<ae_id> <name>', skip version line."""
@@ -197,111 +105,6 @@ PARSE_ARGS_BASE = [
 ]
 
 
-# ---------------------------------------------------------------------------
-# Known template layouts (CommonLibSSE containers)
-# ---------------------------------------------------------------------------
-
-
-
-_KNOWN_TEMPLATE_LAYOUTS = {
-    'NiPointer': (8, [{'name': '_ptr', 'type': 'ptr', 'offset': 0, 'size': 8}]),
-    'BSTSmartPointer': (8, [{'name': '_ptr', 'type': 'ptr', 'offset': 0, 'size': 8}]),
-    'hkRefPtr': (8, [{'name': '_ptr', 'type': 'ptr', 'offset': 0, 'size': 8}]),
-    'GPtr': (8, [{'name': '_ptr', 'type': 'ptr', 'offset': 0, 'size': 8}]),
-    'BSTArray': (0x18, [
-        {'name': '_data', 'type': 'ptr', 'offset': 0, 'size': 8},
-        {'name': '_capacity', 'type': 'u32', 'offset': 8, 'size': 4},
-        {'name': '_size', 'type': 'u32', 'offset': 0x10, 'size': 4},
-    ]),
-    'BSScrapArray': (0x20, [
-        {'name': '_allocator', 'type': 'ptr', 'offset': 0, 'size': 8},
-        {'name': '_data', 'type': 'ptr', 'offset': 8, 'size': 8},
-        {'name': '_capacity', 'type': 'u32', 'offset': 0x10, 'size': 4},
-        {'name': '_size', 'type': 'u32', 'offset': 0x18, 'size': 4},
-    ]),
-    'hkArray': (0x10, [
-        {'name': '_data', 'type': 'ptr', 'offset': 0, 'size': 8},
-        {'name': '_size', 'type': 'i32', 'offset': 8, 'size': 4},
-        {'name': '_capacityAndFlags', 'type': 'i32', 'offset': 0xC, 'size': 4},
-    ]),
-    'BSTHashMap': (0x30, [
-        {'name': '_pad00', 'type': 'u64', 'offset': 0, 'size': 8},
-        {'name': '_pad08', 'type': 'u32', 'offset': 8, 'size': 4},
-        {'name': '_capacity', 'type': 'u32', 'offset': 0xC, 'size': 4},
-        {'name': '_free', 'type': 'u32', 'offset': 0x10, 'size': 4},
-        {'name': '_good', 'type': 'u32', 'offset': 0x14, 'size': 4},
-        {'name': '_sentinel', 'type': 'ptr', 'offset': 0x18, 'size': 8},
-        {'name': '_allocPad', 'type': 'u64', 'offset': 0x20, 'size': 8},
-        {'name': '_entries', 'type': 'ptr', 'offset': 0x28, 'size': 8},
-    ]),
-    'BSTScrapHashMap': (0x30, [
-        {'name': '_pad00', 'type': 'u64', 'offset': 0, 'size': 8},
-        {'name': '_pad08', 'type': 'u32', 'offset': 8, 'size': 4},
-        {'name': '_capacity', 'type': 'u32', 'offset': 0xC, 'size': 4},
-        {'name': '_free', 'type': 'u32', 'offset': 0x10, 'size': 4},
-        {'name': '_good', 'type': 'u32', 'offset': 0x14, 'size': 4},
-        {'name': '_sentinel', 'type': 'ptr', 'offset': 0x18, 'size': 8},
-        {'name': '_allocator', 'type': 'ptr', 'offset': 0x20, 'size': 8},
-        {'name': '_entries', 'type': 'ptr', 'offset': 0x28, 'size': 8},
-    ]),
-    'BSTSet': (0x30, [
-        {'name': '_pad00', 'type': 'u64', 'offset': 0, 'size': 8},
-        {'name': '_pad08', 'type': 'u32', 'offset': 8, 'size': 4},
-        {'name': '_capacity', 'type': 'u32', 'offset': 0xC, 'size': 4},
-        {'name': '_free', 'type': 'u32', 'offset': 0x10, 'size': 4},
-        {'name': '_good', 'type': 'u32', 'offset': 0x14, 'size': 4},
-        {'name': '_sentinel', 'type': 'ptr', 'offset': 0x18, 'size': 8},
-        {'name': '_allocPad', 'type': 'u64', 'offset': 0x20, 'size': 8},
-        {'name': '_entries', 'type': 'ptr', 'offset': 0x28, 'size': 8},
-    ]),
-    'BSSimpleList': (0x10, [
-        {'name': '_item', 'type': 'ptr', 'offset': 0, 'size': 8},
-        {'name': '_next', 'type': 'ptr', 'offset': 8, 'size': 8},
-    ]),
-    'BSTEventSource': (0x58, [
-        {'name': '_sinks_data', 'type': 'ptr', 'offset': 0, 'size': 8},
-        {'name': '_sinks_capacity', 'type': 'u32', 'offset': 8, 'size': 4},
-        {'name': '_sinks_size', 'type': 'u32', 'offset': 0x10, 'size': 4},
-        {'name': '_pendReg_data', 'type': 'ptr', 'offset': 0x18, 'size': 8},
-        {'name': '_pendReg_capacity', 'type': 'u32', 'offset': 0x20, 'size': 4},
-        {'name': '_pendReg_size', 'type': 'u32', 'offset': 0x28, 'size': 4},
-        {'name': '_pendUnreg_data', 'type': 'ptr', 'offset': 0x30, 'size': 8},
-        {'name': '_pendUnreg_capacity', 'type': 'u32', 'offset': 0x38, 'size': 4},
-        {'name': '_pendUnreg_size', 'type': 'u32', 'offset': 0x40, 'size': 4},
-        {'name': '_lock', 'type': 'u64', 'offset': 0x48, 'size': 8},
-        {'name': '_notifying', 'type': 'u8', 'offset': 0x50, 'size': 1},
-    ]),
-    'NiTMap': (0x28, [
-        {'name': '__vftable', 'type': 'ptr', 'offset': 0, 'size': 8},
-        {'name': '_numBuckets', 'type': 'u32', 'offset': 8, 'size': 4},
-        {'name': '_hashTable', 'type': 'ptr', 'offset': 0x10, 'size': 8},
-        {'name': '_count', 'type': 'u32', 'offset': 0x18, 'size': 4},
-    ]),
-    'NiTPrimitiveArray': (0x18, [
-        {'name': '__vftable', 'type': 'ptr', 'offset': 0, 'size': 8},
-        {'name': '_data', 'type': 'ptr', 'offset': 8, 'size': 8},
-        {'name': '_capacity', 'type': 'u16', 'offset': 0x10, 'size': 2},
-        {'name': '_freeIdx', 'type': 'u16', 'offset': 0x12, 'size': 2},
-        {'name': '_size', 'type': 'u16', 'offset': 0x14, 'size': 2},
-        {'name': '_growthSize', 'type': 'u16', 'offset': 0x16, 'size': 2},
-    ]),
-    'SimpleArray': (0x10, [
-        {'name': '_data', 'type': 'ptr', 'offset': 0, 'size': 8},
-        {'name': '_size', 'type': 'u32', 'offset': 8, 'size': 4},
-    ]),
-    'GArray': (0x18, [
-        {'name': '__vftable', 'type': 'ptr', 'offset': 0, 'size': 8},
-        {'name': '_data', 'type': 'ptr', 'offset': 8, 'size': 8},
-        {'name': '_size', 'type': 'u32', 'offset': 0x10, 'size': 4},
-    ]),
-    'hkSmallArray': (0x10, [
-        {'name': '_data', 'type': 'ptr', 'offset': 0, 'size': 8},
-        {'name': '_size', 'type': 'u16', 'offset': 8, 'size': 2},
-        {'name': '_capacityAndFlags', 'type': 'u16', 'offset': 0xA, 'size': 2},
-    ]),
-}
-
-
 def run_version(version, symbols_json, fallback_symbols_json='[]', ccls_binary=None):
     cfg = VERSIONS[version]
     output_path = cfg['output']
@@ -340,8 +143,6 @@ def run_version(version, symbols_json, fallback_symbols_json='[]', ccls_binary=N
 
     except ImportError:
         template_source = ''
-
-    _apply_known_template_layouts(structs, enums, _KNOWN_TEMPLATE_LAYOUTS)
 
     if hasattr(_cac, 'resolve_deferred_typedef_aliases'):
         _n_extra = _cac.resolve_deferred_typedef_aliases(enums, structs, verbose=True)

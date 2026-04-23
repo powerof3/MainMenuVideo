@@ -11,7 +11,6 @@ Public API:
   build_vtable_structs()          - build vtable descriptors from virtual class hierarchy
   inject_vtable_fields()          - prepend __vftable pointers to virtual structs
   flatten_structs()               - expand base class fields into derived structs
-  apply_known_template_layouts()  - patch template instantiations with known sizes
   generate_script()               - emit the Ghidra import script
 """
 
@@ -208,43 +207,6 @@ def flatten_structs(structs: dict) -> None:
 
     gained = sum(1 for st in structs.values() if len(st['fields']) > 0)
     print('Flattening: {} structs have field data after inheritance expansion'.format(gained))
-
-
-def apply_known_template_layouts(
-    structs: dict,
-    enums: dict,
-    known_layouts: Dict[str, Tuple[int, list]],
-    namespace_prefixes: Tuple[str, ...] = ('RE::', 'RE_', 'REX::', 'REX_'),
-) -> None:
-    """Patch template instantiation structs with known fixed-size layouts."""
-    patched = 0
-    for sname, st in structs.items():
-        if st['size'] > 1 and st['fields']:
-            continue
-        key = sname
-        for prefix in namespace_prefixes:
-            if key.startswith(prefix):
-                key = key[len(prefix):]
-                break
-        if '<' in key:
-            base = key.split('<')[0]
-        elif '_' in key:
-            base = key.split('_')[0]
-        else:
-            base = key
-        if base == 'EnumSet' or sname in ('REX::EnumSet', 'EnumSet'):
-            st['size'] = 4
-            st['fields'] = [{'name': '_impl', 'type': 'u32', 'offset': 0, 'size': 4}]
-            patched += 1
-            continue
-        if base in known_layouts:
-            size, fields = known_layouts[base]
-            st['size'] = size
-            st['fields'] = [dict(f) for f in fields]
-            patched += 1
-
-    if patched:
-        print('Applied known template layouts to {} struct(s)'.format(patched))
 
 
 # ---------------------------------------------------------------------------

@@ -34,6 +34,7 @@ GhidraImportScripts/
 ├── parse_commonlib_types.py    CommonLibSSE-specific orchestrator
 ├── ghidra_import_gen.py        Generic Ghidra import script generator
 ├── ccle_client.py              LSP client for ccls-re type extraction
+├── pdb_symbols.py              PDB parsing and address library loading
 ├── reloc_parser.py             Regex-based relocation/symbol scanner
 ├── template_types.py           C++ template instantiation handling
 └── run_headless.py             Headless PyGhidra runner for verification
@@ -114,7 +115,6 @@ Generated 53230 symbols
 Collecting types via ccls-re ($ccls/dumpTypes)...
 Found 918 enums, 3677 structs/classes
 Built 1314 vtable structs
-Applied known template layouts to 967 struct(s)
 Output: ghidrascripts/CommonLibImport_SE.py (918 enums, 4730 structs)
 ```
 
@@ -177,8 +177,6 @@ ghidra_import_gen.py ─── generates script ─┴─► CommonLibImport_SE.
 
 - ccls-re `$ccls/dumpTypes` — records (fields, bases, methods with signatures),
   enums (values, underlying type), typedefs
-- Known template layouts — hardcoded sizes/fields for common containers
-  (`NiPointer`, `BSTArray`, `BSTHashMap`, etc.)
 
 ---
 
@@ -203,7 +201,7 @@ for symbols, loads address libraries / PDB / AE rename DB, and calls
 Generic Ghidra import script generator. Game-agnostic — takes processed type
 data (enums, structs, vtable info) and symbol tables, then generates a
 self-contained Jython script for Ghidra. Provides vtable hierarchy building,
-struct inheritance flattening, template layout application, and the full Ghidra
+struct inheritance flattening, and the full Ghidra
 runtime code (type creation, symbol application, vtable walking).
 
 ### `ccle_client.py`
@@ -237,9 +235,8 @@ and prints a verification summary with sanity checks.
 
 ### Template instantiation layout
 
-Common templates (`NiPointer`, `BSTArray`, `BSTHashMap`, etc.) have hardcoded
-layouts. Other template instantiations are opaque placeholder structs with
-unknown field layout.
+Template instantiation layouts come from ccls-re. Template instantiations that
+ccls-re cannot resolve are emitted as opaque placeholder structs.
 
 ### Vtable slot computation
 
