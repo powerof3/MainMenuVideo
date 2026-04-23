@@ -6,7 +6,7 @@ import sys
 import os
 from pathlib import Path
 
-REPO_DIR = Path(__file__).parent
+REPO_DIR = Path(__file__).parent.parent
 GHIDRA_DIR = REPO_DIR / "ghidra_12.0.4_PUBLIC"
 BINARY = REPO_DIR / "SkyrimSE.exe"
 SCRIPT = REPO_DIR / "ghidrascripts" / "CommonLibImport_SE.py"

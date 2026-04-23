@@ -30,10 +30,11 @@ from ghidra_import_gen import (
 # ---------------------------------------------------------------------------
 
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
-COMMONLIB_INCLUDE = os.path.join(SCRIPT_DIR, 'extern', 'CommonLibSSE', 'include')
+PROJECT_DIR = os.path.dirname(SCRIPT_DIR)
+COMMONLIB_INCLUDE = os.path.join(PROJECT_DIR, 'extern', 'CommonLibSSE', 'include')
 SKYRIM_H = os.path.join(COMMONLIB_INCLUDE, 'RE', 'Skyrim.h')
 RE_INCLUDE = os.path.join(COMMONLIB_INCLUDE, 'RE')
-OUTPUT_DIR = os.path.join(SCRIPT_DIR, 'ghidrascripts')
+OUTPUT_DIR = os.path.join(PROJECT_DIR, 'ghidrascripts')
 
 # ---------------------------------------------------------------------------
 # AE rename database
@@ -147,7 +148,7 @@ def main():
 
     # Load address databases (binary data, not source scanning)
     addr_lib = AddressLibrary()
-    addr_lib.load_all(os.path.join(SCRIPT_DIR, 'addresslibrary'))
+    addr_lib.load_all(os.path.join(PROJECT_DIR, 'addresslibrary'))
     print('SE entries: {}, AE entries: {}'.format(len(addr_lib.se_db), len(addr_lib.ae_db)))
 
     print('\n=== Collecting symbols via regex relocation parser ===')
@@ -156,7 +157,7 @@ def main():
     func_syms, label_syms, offset_id_map, static_methods, se_offset_map, ae_offset_map = _rp.collect_relocations(
         RE_INCLUDE, addr_lib, verbose=True)
 
-    src_dir = os.path.join(SCRIPT_DIR, 'extern', 'CommonLibSSE', 'src')
+    src_dir = os.path.join(PROJECT_DIR, 'extern', 'CommonLibSSE', 'src')
     if os.path.isdir(src_dir):
         src_func_syms = _rp.collect_src_relocations(
             src_dir, addr_lib, offset_id_map,
@@ -221,7 +222,7 @@ def main():
     name_to_sym = {s['n']: s for s in symbols}
 
     # AE rename database fallback
-    rename_db = os.path.join(SCRIPT_DIR, 'extern', 'AddressLibraryDatabase', 'skyrimae.rename')
+    rename_db = os.path.join(PROJECT_DIR, 'extern', 'AddressLibraryDatabase', 'skyrimae.rename')
     ae_rename = load_ae_rename_db(rename_db, addr_lib.ae_db)
     rename_added = rename_merged = 0
     for ae_off, name in ae_rename.items():
@@ -243,7 +244,7 @@ def main():
         rename_added, rename_merged))
 
     # SE PDB public symbols fallback
-    se_pdb_path = os.path.join(SCRIPT_DIR, 'extras', 'SkyrimSE.pdb')
+    se_pdb_path = os.path.join(PROJECT_DIR, 'extras', 'SkyrimSE.pdb')
     se_pdb_names = load_se_pdb_names(se_pdb_path)
     pdb_added = pdb_merged = 0
     for se_off, name in se_pdb_names.items():
