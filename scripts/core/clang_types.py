@@ -907,6 +907,46 @@ def _compute_vfuncs(structs, root_ns='RE'):
     print('Computed vtable slots for {} structs from AST'.format(count))
 
 
+def _tmpl_base(name):
+    """Extract template base name: 'RE::NiPointer<RE::Actor>' -> 'RE::NiPointer'."""
+    lt = name.find('<')
+    return name[:lt] if lt >= 0 else None
+
+
+def _propagate_template_layouts(structs):
+    """Fill empty template placeholders from known instantiations of the same template.
+
+    For each empty template instantiation (size 0, no fields), find another
+    instantiation of the same template base that has layout data. If ALL known
+    instantiations share the same size, propagate the field layout.
+    """
+    by_base = {}
+    for key, st in structs.items():
+        base = _tmpl_base(key)
+        if base is None:
+            continue
+        by_base.setdefault(base, []).append((key, st))
+
+    propagated = 0
+    for base, entries in by_base.items():
+        has_layout = [(k, s) for k, s in entries if s['size'] > 0 and s['fields']]
+        empty = [(k, s) for k, s in entries if s['size'] == 0 and not s['fields']]
+        if not has_layout or not empty:
+            continue
+        sizes = set(s['size'] for _, s in has_layout)
+        if len(sizes) != 1:
+            continue
+        donor_size = sizes.pop()
+        donor = has_layout[0][1]
+        for key, st in empty:
+            st['size'] = donor_size
+            st['fields'] = [dict(f) for f in donor['fields']]
+            st['bases'] = list(donor['bases'])
+            st['has_vtable'] = donor['has_vtable']
+            propagated += 1
+    return propagated
+
+
 # ---------------------------------------------------------------------------
 # Public API
 # ---------------------------------------------------------------------------
@@ -1013,6 +1053,10 @@ def collect_types(header_path, include_path, parse_args,
         if tmpl.template_map:
             print('Discovered {} template instantiation aliases ({} new placeholders)'.format(
                 len(tmpl.template_map), _created))
+
+        _propagated = _propagate_template_layouts(structs)
+        if _propagated:
+            print('Propagated layout to {} empty template instantiations'.format(_propagated))
     except ImportError:
         pass
 
