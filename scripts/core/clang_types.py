@@ -174,7 +174,19 @@ def _qualify_type(name, root_ns='RE'):
     if name in _PRIM_ALL:
         return '{}{}{}'.format(leading, name, trailing)
     if '::' in name:
-        return '{}{}{}'.format(leading, name, trailing)
+        parts = _split_ns(name)
+        qualified_parts = []
+        for p in parts:
+            plt = p.find('<')
+            if plt >= 0 and p.endswith('>'):
+                p_outer = p[:plt].strip()
+                p_inner = p[plt + 1:-1]
+                p_args = _split_tmpl_args(p_inner)
+                q_args = ', '.join(_qualify_type(a, root_ns) for a in p_args)
+                qualified_parts.append('{}<{}>'.format(p_outer, q_args))
+            else:
+                qualified_parts.append(p)
+        return '{}{}{}'.format(leading, '::'.join(qualified_parts), trailing)
     if name in _PRIM_BARE:
         return '{}{}{}'.format(leading, name, trailing)
     return '{}{}{}{}'.format(leading, root_ns + '::', name, trailing)
@@ -569,7 +581,9 @@ def _parse_layouts_with_bases(text, root_ns='RE'):
                 m_rec = re.match(r'(?:class|struct|union)\s+(.+?)\s*$', content)
                 if m_rec:
                     first_seen = True
-                    type_name = _KW_STRIP_RE.sub('', m_rec.group(1)).strip()
+                    raw_name = _KW_STRIP_RE.sub('', m_rec.group(1)).strip()
+                    raw_name = re.sub(r'\s*\(empty\)\s*$', '', raw_name)
+                    type_name = _qualify_type(raw_name, root_ns)
                 continue
 
             # Base class
@@ -577,9 +591,11 @@ def _parse_layouts_with_bases(text, root_ns='RE'):
                 m_off = re.match(r'^\s*(\d+)\s+\|', line_r)
                 if m_off:
                     base_off = int(m_off.group(1))
-                    m_base = re.match(r'^(?:class|struct)\s+(\S+(?:<[^>]*>)?)\s+\(', content)
+                    m_base = re.match(r'^(?:class|struct)\s+(.+?)\s+\((?:primary )?base\)', content)
                     if m_base:
-                        bases.append((m_base.group(1), base_off))
+                        bname = _qualify_type(
+                            _KW_STRIP_RE.sub('', m_base.group(1)).strip(), root_ns)
+                        bases.append((bname, base_off))
                 continue
 
             if '(empty)' in content:
@@ -745,8 +761,7 @@ def _merge_ast_and_layouts(ast_classes, layouts, re_include_path,
                 layout = ldata
                 break
 
-        # Strip root namespace from struct dict key
-        key = full_name[len(ns_prefix):] if full_name.startswith(ns_prefix) else full_name
+        key = full_name
 
         if layout:
             bases = []
@@ -779,22 +794,20 @@ def _merge_ast_and_layouts(ast_classes, layouts, re_include_path,
             }
 
     # Add layout-only types (templates, types not in AST class list)
-    ns_prefix = root_ns + '::'
     for lname, ldata in layouts.items():
-        bare = lname[len(ns_prefix):] if lname.startswith(ns_prefix) else lname
-        if bare in structs or lname in structs:
+        if lname in structs:
             continue
 
-        short = _short_name(bare)
+        short = _short_name(lname)
 
         bases = [bname for bname, _ in ldata['bases']]
 
         ns_parts = _ns_parts(lname)
         category = category_prefix + '/' + '/'.join(ns_parts) if ns_parts else category_prefix
 
-        structs[bare] = {
+        structs[lname] = {
             'name': short,
-            'full_name': bare,
+            'full_name': lname,
             'size': ldata['size'],
             'category': category,
             'fields': ldata['fields'],

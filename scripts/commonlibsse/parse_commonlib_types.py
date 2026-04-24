@@ -90,6 +90,13 @@ def _enrich_symbols_with_sigs(symbols_json, structs):
     """
     import json as _json
     symbols = _json.loads(symbols_json)
+    structs_by_suffix = {}
+    for key, val in structs.items():
+        parts = key.split('::')
+        for i in range(len(parts)):
+            suffix = '::'.join(parts[i:])
+            if suffix not in structs_by_suffix:
+                structs_by_suffix[suffix] = val
     enriched = 0
     for sym in symbols:
         if sym['t'] != 'func' or sym.get('sd'):
@@ -100,7 +107,7 @@ def _enrich_symbols_with_sigs(symbols_json, structs):
         idx = name.rfind('::')
         class_name = name[:idx]
         method_name = name[idx + 2:]
-        st = structs.get(class_name)
+        st = structs.get(class_name) or structs_by_suffix.get(class_name)
         if not st:
             continue
         methods = st.get('methods', {})
