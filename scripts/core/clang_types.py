@@ -314,7 +314,7 @@ def _parse_line(line):
     """
     m = _LINE_RE.match(line)
     if m:
-        return m.group(1).count('|'), m.group(2)
+        return len(m.group(1)) // 2, m.group(2)
     if line and not line[0].isspace() and not line.startswith('|'):
         return 0, line.rstrip()
     return 0, None
@@ -418,7 +418,7 @@ def _parse_ast_dump(text, re_include_path, root_ns='RE', category_prefix='/Commo
 
         # EnumConstantDecl
         if content.startswith('EnumConstantDecl ') and cur_enum:
-            m = re.search(r"<[^>]+>\s+\S+\s+(\w+)\s+'", content)
+            m = re.search(r"(\w+)\s+'", content)
             if m:
                 pending_const_name = m.group(1)
             continue
@@ -471,10 +471,7 @@ def _parse_ast_dump(text, re_include_path, root_ns='RE', category_prefix='/Commo
         # Method declarations (virtual and non-virtual)
         if content.startswith('CXXMethodDecl '):
             is_virtual = ' virtual' in content
-            if is_virtual:
-                m = re.search(r"<[^>]+>\s+\S+\s+(\w+)\s+'([^']+)'\s+virtual", content)
-            else:
-                m = re.search(r"<[^>]+>\s+\S+\s+(\w+)\s+'([^']+)'", content)
+            m = re.search(r"(operator\(\)|operator\w*|\w+)\s+'([^']+)'", content)
             if m:
                 method_name = m.group(1)
                 method_sig = m.group(2)
@@ -491,6 +488,48 @@ def _parse_ast_dump(text, re_include_path, root_ns='RE', category_prefix='/Commo
                         if method_name not in cls['methods']:
                             is_static = ' static' in content
                             cls['methods'][method_name] = (ret, params, is_static)
+            continue
+
+        # Constructor declarations
+        if content.startswith('CXXConstructorDecl ') and ' implicit ' not in content:
+            m = re.search(r"(\w+)\s+'([^']+)'", content)
+            if m:
+                ctor_name = m.group(1)
+                ctor_sig = m.group(2)
+                parts = [s[2] for s in stack if s[1] in ('namespace', 'class') and s[2]]
+                fn = '::'.join(parts)
+                if fn in ast_classes:
+                    cls = ast_classes[fn]
+                    if ctor_name == cls['name'] and ctor_name not in cls['methods']:
+                        _ret, params = _parse_method_sig(ctor_sig, root_ns)
+                        cls['methods'][ctor_name] = ('void', params, False)
+            continue
+
+        # Free function declarations in namespaces (stored as pseudo-class methods)
+        if content.startswith('FunctionDecl ') and ' implicit ' not in content and _is_re():
+            m = re.search(r"(operator\(\)|operator\w*|\w+)\s+'([^']+)'", content)
+            if m:
+                func_name = m.group(1)
+                func_sig = m.group(2)
+                ns_parts = [s[2] for s in stack if s[1] == 'namespace' and s[2]]
+                fn = '::'.join(ns_parts)
+                if fn and fn not in ast_classes:
+                    short_name = ns_parts[-1] if ns_parts else fn
+                    ast_classes[fn] = {
+                        'name': short_name,
+                        'full_name': fn,
+                        'bases': [],
+                        'has_vtable': False,
+                        'vmethods': {},
+                        'methods': {},
+                        'category': _category(),
+                    }
+                if fn and fn in ast_classes and func_name and '<' not in func_name:
+                    cls = ast_classes[fn]
+                    if func_name not in cls['methods']:
+                        ret, params = _parse_method_sig(func_sig, root_ns)
+                        is_static = ' static' in content
+                        cls['methods'][func_name] = (ret, params, is_static)
             continue
 
         # Virtual destructor

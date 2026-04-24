@@ -52,11 +52,33 @@ _OFFSET_ID_RE = re.compile(
     r'inline\s+constexpr\s+REL::ID\s+(\w+)\s*\(\s*static_cast<std::uint64_t>\s*\(\s*(\d+)\s*\)\s*\)'
 )
 
-# Namespace opening
+# Namespace opening (with or without same-line brace)
 _NS_OPEN_RE = re.compile(r'\bnamespace\s+(\w+)\s*\{')
+_NS_DECL_NOPAREN_RE = re.compile(r'^\s*namespace\s+(\w+)\s*$')
 
-# Class/struct opening (captures name)
+# Class/struct opening (with or without same-line brace)
 _CLASS_RE = re.compile(r'\b(?:class|struct)\s+(\w+)\s*(?:final\s*)?(?::\s*[^{]*?)?\{')
+_CLASS_DECL_RE = re.compile(r'^\s*(?:class|struct)\s+(\w+)\s*(?:final\s*)?(?::\s*[^{;]*?)?\s*$')
+
+# Method definition inside a class body (for header inline methods)
+# Matches with same-line brace: void GetSingleton() {
+_METHOD_DEF_RE = re.compile(
+    r'(?:\[\[.*?\]\]\s*)*'
+    r'(?:static\s+)?(?:virtual\s+)?(?:inline\s+)?'
+    r'(?:[\w:*&<>,\s]+?)\s+'
+    r'(\w+)\s*\([^)]*\)\s*'
+    r'(?:const\s*)?(?:noexcept\s*)?(?:override\s*)?(?:final\s*)?'
+    r'\s*\{'
+)
+# Matches without brace: void GetSingleton() or [[nodiscard]] static Type* GetSingleton()
+_METHOD_DECL_RE = re.compile(
+    r'(?:\[\[.*?\]\]\s*)*'
+    r'(?:static\s+)?(?:virtual\s+)?(?:inline\s+)?'
+    r'(?:[\w:*&<>,\s]+?)\s+'
+    r'(\w+)\s*\([^)]*\)\s*'
+    r'(?:const\s*)?(?:noexcept\s*)?(?:override\s*)?(?:final\s*)?'
+    r'\s*$'
+)
 
 # Static method in class
 _STATIC_METHOD_RE = re.compile(
@@ -80,11 +102,21 @@ _ENDIF_RE = re.compile(r'#\s*endif\b')
 # ---------------------------------------------------------------------------
 
 class _ContextTracker:
-    """Track namespace/class/method context via brace counting."""
+    """Track namespace/class/method context via brace counting.
+
+    Handles both same-line braces (``namespace RE {``) and next-line braces::
+
+        namespace RE
+        {
+    """
 
     def __init__(self):
         self.scope_stack: List[Tuple[str, str, int]] = []  # (kind, name, brace_depth)
         self.brace_depth = 0
+        self._pending: Optional[Tuple[str, str]] = None  # (kind, name) waiting for '{'
+        self._pending_method: Optional[str] = None
+        self.method_name: Optional[str] = None
+        self._method_depth: Optional[int] = None
 
     def feed_line(self, line: str):
         """Update brace depth and scope from a line of code."""
@@ -95,17 +127,56 @@ class _ContextTracker:
         opens = line.count('{')
         closes = line.count('}')
 
-        # Check for namespace/class openings before counting braces
+        # Same-line namespace/class openings
         for m in _NS_OPEN_RE.finditer(line):
             self.scope_stack.append(('ns', m.group(1), self.brace_depth))
         for m in _CLASS_RE.finditer(line):
             self.scope_stack.append(('class', m.group(1), self.brace_depth))
+
+        # Strip trailing C++ comments for matching
+        code_line = re.sub(r'\s*//.*$', '', line)
+
+        # Next-line declarations (no '{' on this line)
+        if opens == 0 and closes == 0:
+            m = _NS_DECL_NOPAREN_RE.match(code_line)
+            if m:
+                self._pending = ('ns', m.group(1))
+            else:
+                m = _CLASS_DECL_RE.match(code_line)
+                if m:
+                    self._pending = ('class', m.group(1))
+                elif self.class_name:
+                    m = _METHOD_DECL_RE.search(code_line)
+                    if m and m.group(1) not in ('return', 'if', 'else', 'for', 'while', 'switch', 'do'):
+                        self._pending_method = m.group(1)
+
+        # Resolve pending declaration when '{' appears
+        if self._pending and opens > 0:
+            self.scope_stack.append((self._pending[0], self._pending[1], self.brace_depth))
+            self._pending = None
+
+        # Track method definitions inside class bodies
+        if self.class_name and opens > 0:
+            m = _METHOD_DEF_RE.search(line)
+            if m:
+                self.method_name = m.group(1)
+                self._method_depth = self.brace_depth
+                self._pending_method = None
+            elif self._pending_method:
+                self.method_name = self._pending_method
+                self._method_depth = self.brace_depth
+                self._pending_method = None
 
         self.brace_depth += opens - closes
 
         # Pop scopes that have been closed
         while self.scope_stack and self.scope_stack[-1][2] >= self.brace_depth:
             self.scope_stack.pop()
+
+        # Clear method when its brace scope closes
+        if self._method_depth is not None and self.brace_depth <= self._method_depth:
+            self.method_name = None
+            self._method_depth = None
 
     @property
     def namespace_path(self) -> List[str]:
@@ -121,10 +192,6 @@ class _ContextTracker:
     @property
     def full_class(self) -> Optional[str]:
         """Full qualified class name (ns1::ns2::Class)."""
-        parts = []
-        for kind, name, _ in self.scope_stack:
-            if kind in ('ns', 'class'):
-                parts.append(name)
         classes = [name for kind, name, _ in self.scope_stack if kind == 'class']
         if not classes:
             return None
@@ -182,10 +249,11 @@ def _scan_header_relocations(
                     static_methods.add((bare, method_name))
 
     # Now do content-level (multi-line-aware) regex scans
-
-    # RELOCATION_ID with enclosing REL::Relocation context
-    # We do a line-by-line scan for REL::Relocation vars containing RELOCATION_ID
+    # Scan for REL::Relocation vars with RELOCATION_ID or Offset:: references
+    _decltype_re = re.compile(r'decltype\(&([\w:]+(?:\(\))?)\)')
     ctx2 = _ContextTracker()
+    _ns_pre2 = root_namespace + '::'
+    prev_line = ''
     for line in lines:
         ctx2.feed_line(line)
 
@@ -197,20 +265,29 @@ def _scan_header_relocations(
             se_off = addr_lib.se_db.get(se_id)
             ae_off = addr_lib.ae_db.get(ae_id)
             if not se_off and not ae_off:
+                prev_line = line
                 continue
 
-            # Extract variable name
             var_match = _RELOC_VAR_RE.search(line)
             var_name = var_match.group(1) if var_match else 'func'
 
-            # Symbol name = enclosing class method or var name
             sym_class = ctx2.full_class
-            _ns_pre2 = root_namespace + '::'
             if sym_class and sym_class.startswith(_ns_pre2):
                 sym_class = sym_class[len(_ns_pre2):]
 
+            # Use method name from context, or decltype on prev line, or var name
+            sym_name = ctx2.method_name
+            if not sym_name or sym_name == var_name:
+                dt = _decltype_re.search(prev_line) or _decltype_re.search(line)
+                if dt:
+                    parts = dt.group(1).split('::')
+                    sym_name = parts[-1]
+                    if not sym_class and len(parts) > 1:
+                        sym_class = '::'.join(parts[:-1])
+            sym_name = sym_name or var_name
+
             func_syms.append({
-                'name': var_name,
+                'name': sym_name,
                 'class_': sym_class,
                 'ret': '', 'params': '',
                 'is_static': False,
@@ -221,35 +298,50 @@ def _scan_header_relocations(
         elif 'REL::Relocation' in line and 'Offset::' in line and not _RELOC_ID_RE.search(line):
             var_match = _RELOC_VAR_RE.search(line)
             if not var_match:
+                prev_line = line
                 continue
             var_name = var_match.group(1)
 
-            # Extract the Offset:: reference
             off_match = re.search(r'Offset::(\w+(?:::\w+)*)', line)
             if not off_match:
+                prev_line = line
                 continue
             offset_key = off_match.group(1)
             se_id = se_offset_map.get(offset_key)
             ae_id = ae_offset_map.get(offset_key)
             if se_id is None and ae_id is None:
+                prev_line = line
                 continue
 
             se_off = addr_lib.se_db.get(se_id) if se_id else None
             ae_off = addr_lib.ae_db.get(ae_id) if ae_id else None
             if not se_off and not ae_off:
+                prev_line = line
                 continue
 
             sym_class = ctx2.full_class
             if sym_class and sym_class.startswith(_ns_pre2):
                 sym_class = sym_class[len(_ns_pre2):]
 
+            sym_name = ctx2.method_name
+            if not sym_name or sym_name == var_name:
+                dt = _decltype_re.search(prev_line) or _decltype_re.search(line)
+                if dt:
+                    parts = dt.group(1).split('::')
+                    sym_name = parts[-1]
+                    if not sym_class and len(parts) > 1:
+                        sym_class = '::'.join(parts[:-1])
+            sym_name = sym_name or var_name
+
             func_syms.append({
-                'name': var_name,
+                'name': sym_name,
                 'class_': sym_class,
                 'ret': '', 'params': '',
                 'is_static': False,
                 'se_off': se_off, 'ae_off': ae_off,
             })
+
+        prev_line = line
 
     return func_syms, label_syms, static_methods
 
@@ -481,10 +573,12 @@ def _scan_src_relocations(
         if 'RELOCATION_ID' not in content and 'REL::Relocation' not in content:
             continue
 
+        _decltype_re = re.compile(r'decltype\(&([\w:]+(?:\(\))?)\)')
         lines = content.split('\n')
         current_func_class = None
         current_func_name = None
         pending_func = None
+        prev_line = ''
 
         for line in lines:
             stripped = line.strip()
@@ -519,13 +613,25 @@ def _scan_src_relocations(
                 se_off = addr_lib.se_db.get(se_id)
                 ae_off = addr_lib.ae_db.get(ae_id)
                 if not se_off and not ae_off:
+                    prev_line = line
                     continue
 
                 var_match = _RELOC_VAR_RE.search(line)
                 var_name = var_match.group(1) if var_match else 'func'
 
-                sym_name = current_func_name or var_name
+                sym_name = current_func_name
                 sym_class = current_func_class
+
+                # Fallback: extract from decltype on previous or current line
+                if not sym_name or not sym_class:
+                    dt = _decltype_re.search(prev_line) or _decltype_re.search(line)
+                    if dt:
+                        parts = dt.group(1).split('::')
+                        if not sym_name:
+                            sym_name = parts[-1]
+                        if not sym_class and len(parts) > 1:
+                            sym_class = '::'.join(parts[:-1])
+                sym_name = sym_name or var_name
 
                 func_syms.append({
                     'name': sym_name,
@@ -539,22 +645,36 @@ def _scan_src_relocations(
             elif 'REL::Relocation' in line and 'Offset::' in line:
                 var_match = _RELOC_VAR_RE.search(line)
                 if not var_match:
+                    prev_line = line
                     continue
                 off_match = re.search(r'Offset::(\w+(?:::\w+)*)', line)
                 if not off_match:
+                    prev_line = line
                     continue
                 offset_key = off_match.group(1)
                 se_id = se_offset_map.get(offset_key)
                 ae_id = ae_offset_map.get(offset_key)
                 if se_id is None and ae_id is None:
+                    prev_line = line
                     continue
                 se_off = addr_lib.se_db.get(se_id) if se_id else None
                 ae_off = addr_lib.ae_db.get(ae_id) if ae_id else None
                 if not se_off and not ae_off:
+                    prev_line = line
                     continue
 
-                sym_name = current_func_name or var_match.group(1)
+                sym_name = current_func_name
                 sym_class = current_func_class
+
+                if not sym_name or not sym_class:
+                    dt = _decltype_re.search(prev_line) or _decltype_re.search(line)
+                    if dt:
+                        parts = dt.group(1).split('::')
+                        if not sym_name:
+                            sym_name = parts[-1]
+                        if not sym_class and len(parts) > 1:
+                            sym_class = '::'.join(parts[:-1])
+                sym_name = sym_name or var_match.group(1)
 
                 func_syms.append({
                     'name': sym_name,
@@ -563,6 +683,8 @@ def _scan_src_relocations(
                     'is_static': False,
                     'se_off': se_off, 'ae_off': ae_off,
                 })
+
+            prev_line = line
 
     return func_syms
 

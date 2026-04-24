@@ -116,6 +116,8 @@ def _enrich_symbols_with_sigs(symbols_json, structs):
             continue
         methods = st.get('methods', {})
         info = methods.get(method_name)
+        if not info and method_name == 'operator':
+            info = methods.get('operator()')
         if not info:
             continue
         ret, params, is_static = info

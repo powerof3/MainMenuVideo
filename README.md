@@ -31,12 +31,15 @@ GhidraImportScripts/
 ├── ghidrascripts/
 │   ├── CommonLibImport_SE.py   Generated: import SE types + vtables + symbols
 │   └── CommonLibImport_AE.py   Generated: import AE types + vtables + symbols
-├── parse_commonlib_types.py    CommonLibSSE-specific orchestrator
-├── ghidra_import_gen.py        Generic Ghidra import script generator
-├── ccle_client.py              LSP client for ccls-re type extraction
-├── pdb_symbols.py              PDB parsing and address library loading
+├── scripts/
+│   ├── commonlibsse/
+│   │   └── parse_commonlib_types.py  CommonLibSSE-specific orchestrator
+│   └── core/
+│       ├── clang_types.py            Clang AST dump parser (types, enums, methods)
+│       ├── ghidra_import_gen.py      Generic Ghidra import script generator
+│       ├── pdb_symbols.py            PDB parsing and address library loading
+│       └── template_types.py         C++ template instantiation handling
 ├── reloc_parser.py             Regex-based relocation/symbol scanner
-├── template_types.py           C++ template instantiation handling
 └── run_headless.py             Headless PyGhidra runner for verification
 ```
 
@@ -56,14 +59,13 @@ pip install pdbparse pyghidra
 `pdbparse` reads SE PDB public symbols. `pyghidra` is optional, only needed
 for headless verification via `run_headless.py`.
 
-### ccls-re
+### Clang
 
-[ccls-re](https://github.com/doodlum/ccls-re) is a fork of ccls with custom
-`$ccls/dumpTypes` extensions for extracting C++ type layouts (records, enums,
-vtable slots, method signatures). It is the sole type backend for the pipeline.
+[LLVM/Clang](https://releases.llvm.org/) is required for type extraction.
+The pipeline uses `clang -ast-dump` for enums, class hierarchies, and method
+signatures, and `clang -fdump-record-layouts` for struct field offsets and sizes.
 
-Build from source (requires LLVM+Clang dev libraries) or use a prebuilt binary.
-Pass the path via `--ccls-re <path>`.
+The generator auto-detects `clang.exe` from PATH or common install locations.
 
 ### CommonLibSSE submodule
 
@@ -92,14 +94,14 @@ automatically — no environment variables are required.
 Run from the repository root:
 
 ```bash
-python parse_commonlib_types.py --ccls-re /path/to/ccls-re
+python scripts/commonlibsse/parse_commonlib_types.py
 ```
 
 Outputs:
 - `ghidrascripts/CommonLibImport_SE.py` — SE types, enums, vtables, symbols
 - `ghidrascripts/CommonLibImport_AE.py` — AE types, enums, vtables, symbols
 
-Typical run time: ~30–60 seconds (two ccls-re indexing passes + relocation scan).
+Typical run time: ~2–3 minutes (two clang AST + layout passes + relocation scan).
 
 Console output:
 ```
@@ -109,13 +111,17 @@ Console output:
   Parsed 7224 labels from Offsets_VTABLE.h
   Header scan: 178 func symbols, 14551 labels
   src/ scan: 626 func symbols from 347 cpp files
-Generated 53230 symbols
+Generated 53227 symbols
 
 === SE ===
-Collecting types via ccls-re ($ccls/dumpTypes)...
-Found 918 enums, 3677 structs/classes
-Built 1314 vtable structs
-Output: ghidrascripts/CommonLibImport_SE.py (918 enums, 4730 structs)
+Using clang: G:\LLVM\bin\clang.exe
+Pass 1: AST dump (enums, virtual methods)...
+  Parsed 699 enums, 2805 classes from AST
+Pass 2: Record layouts (field offsets, sizes)...
+  Merged: 16993 structs
+Enriched 780 symbols with AST method signatures
+Built 1351 vtable structs
+Output: ghidrascripts/CommonLibImport_SE.py (699 enums, 17121 structs)
 ```
 
 ### Regeneration
@@ -160,7 +166,8 @@ CommonLibSSE headers ─┬─ reloc_parser.py ──► symbols (SE+AE offsets)
 CommonLibSSE src/   ──┤
 Address libraries   ──┘
 
-CommonLibSSE headers ─── ccls-re ──► types, enums, vtable slots, method signatures
+CommonLibSSE headers ─── clang AST dump ──► enums, class hierarchy, method signatures
+                     ─── clang layouts  ──► struct fields, sizes, offsets
 
 parse_commonlib_types.py ─── merges both ──┐
 ghidra_import_gen.py ─── generates script ─┴─► CommonLibImport_SE.py / AE.py
@@ -175,8 +182,9 @@ ghidra_import_gen.py ─── generates script ─┴─► CommonLibImport_SE.
 
 **Type sources:**
 
-- ccls-re `$ccls/dumpTypes` — records (fields, bases, methods with signatures),
-  enums (values, underlying type), typedefs
+- Clang `-ast-dump` — class definitions, base classes, virtual/non-virtual methods,
+  enums (values, underlying type), constructors, free functions
+- Clang `-fdump-record-layouts` — struct field offsets, sizes, padding
 
 ---
 
@@ -184,7 +192,7 @@ ghidra_import_gen.py ─── generates script ─┴─► CommonLibImport_SE.
 
 ### `parse_commonlib_types.py`
 
-CommonLibSSE-specific orchestrator. Coordinates ccls-re for types, reloc_parser
+CommonLibSSE-specific orchestrator. Coordinates clang for types, reloc_parser
 for symbols, loads address libraries / PDB / AE rename DB, and calls
 `ghidra_import_gen` to emit the Ghidra import scripts.
 
@@ -196,6 +204,13 @@ for symbols, loads address libraries / PDB / AE rename DB, and calls
 | `extern/AddressLibraryDatabase/skyrimae.rename` | AE fallback symbol names |
 | `extras/SkyrimSE.pdb` | SE fallback symbol names |
 
+### `clang_types.py`
+
+Clang AST dump and record layout parser. Runs `clang -ast-dump` to extract
+enums, class hierarchies, virtual/non-virtual methods, constructors, and
+namespace free functions. Runs `clang -fdump-record-layouts` for struct field
+offsets and sizes. Merges both into the pipeline struct dict.
+
 ### `ghidra_import_gen.py`
 
 Generic Ghidra import script generator. Game-agnostic — takes processed type
@@ -203,13 +218,6 @@ data (enums, structs, vtable info) and symbol tables, then generates a
 self-contained Jython script for Ghidra. Provides vtable hierarchy building,
 struct inheritance flattening, and the full Ghidra
 runtime code (type creation, symbol application, vtable walking).
-
-### `ccle_client.py`
-
-LSP client for ccls-re. Launches ccls-re as a subprocess, sends
-`$ccls/dumpTypes` requests, and converts responses to pipeline dicts.
-Parses method signatures from ccls `detailed_name` into return types and
-parameter lists.
 
 ### `reloc_parser.py`
 
@@ -235,14 +243,15 @@ and prints a verification summary with sanity checks.
 
 ### Template instantiation layout
 
-Template instantiation layouts come from ccls-re. Template instantiations that
-ccls-re cannot resolve are emitted as opaque placeholder structs.
+Template instantiation layouts come from clang's record layout dump. Template
+instantiations that clang cannot resolve are emitted as opaque placeholder structs.
 
 ### Vtable slot computation
 
-Slot indices come from ccls-re's `vtableIndex` data. Diamond inheritance with
-shared virtual bases may produce incorrect slot numbers. Multi-vtable classes
-(multiple inheritance) use only the primary vtable (index 0) for the vtable walk.
+Slot indices are computed from the clang AST's virtual method declarations.
+Diamond inheritance with shared virtual bases may produce incorrect slot numbers.
+Multi-vtable classes (multiple inheritance) use only the primary vtable (index 0)
+for the vtable walk.
 
 ### CParserUtils type resolution
 
