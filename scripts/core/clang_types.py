@@ -654,20 +654,23 @@ def _parse_layouts_with_bases(text, root_ns='RE'):
 
             if m_bf:
                 bf_byte = int(m_bf.group(1))
+                bf_bit_start = int(m_bf.group(2))
+                bf_bit_end = int(m_bf.group(3))
+                bf_width = bf_bit_end - bf_bit_start + 1
                 m_tn = re.match(
                     r'^(?:(?:class|struct|union|enum)\s+)?(.+?)\s+(\w+)\s*$', content)
                 if not m_tn:
                     continue
                 fname = m_tn.group(2)
-                if not fields or '_bf_byte' not in fields[-1]:
-                    fields.append({
-                        'name': fname,
-                        'offset': bf_byte,
-                        'size': 0,
-                        'type': '',
-                        '_bf_byte': bf_byte,
-                        '_bf_total': 0,
-                    })
+                bf_bit_offset = bf_byte * 8 + bf_bit_start
+                fields.append({
+                    'name': fname,
+                    'offset': bf_byte,
+                    'size': 0,
+                    'type': '',
+                    '_bf_bit_offset': bf_bit_offset,
+                    '_bf_width': bf_width,
+                })
                 continue
 
             is_record_field = bool(re.match(r'^(?:class|struct|union)\s+', content))
@@ -692,19 +695,12 @@ def _parse_layouts_with_bases(text, root_ns='RE'):
                 value_field_indents.append(indent)
 
         if type_name:
-            _bf_indices = set()
-            for i, f in enumerate(fields):
-                if '_bf_byte' in f:
-                    if '_bf_total' in f:
-                        del f['_bf_total']
-                    del f['_bf_byte']
-                    f['type'] = ''
-                    _bf_indices.add(i)
-            _backfill_sizes(fields, sizeof_bytes)
-            _SIZE_TO_TYPE = {1: 'u8', 2: 'u16', 4: 'u32', 8: 'u64'}
-            for i in _bf_indices:
-                f = fields[i]
-                f['type'] = _SIZE_TO_TYPE.get(f['size'], 'u32')
+            non_bf_fields = [f for f in fields if '_bf_bit_offset' not in f]
+            _backfill_sizes(non_bf_fields, sizeof_bytes)
+            for f in fields:
+                if '_bf_bit_offset' in f:
+                    f['type'] = 'bf:{}:{}'.format(f.pop('_bf_bit_offset'), f.pop('_bf_width'))
+                    f['size'] = 0
             results[type_name] = {
                 'size': sizeof_bytes,
                 'fields': fields,

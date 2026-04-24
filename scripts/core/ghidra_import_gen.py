@@ -230,6 +230,12 @@ def flatten_structs(structs: dict) -> None:
         memo[full_name] = []
         combined = {}
 
+        def _field_key(f, offset=None):
+            off = offset if offset is not None else f['offset']
+            if f['type'].startswith('bf:'):
+                return ('bf', off, f['type'])
+            return off
+
         pdb_bases = st.get('pdb_bases', [])
         if pdb_bases:
             for base_name, base_off in pdb_bases:
@@ -238,24 +244,26 @@ def flatten_structs(structs: dict) -> None:
                     continue
                 for f in get_flat(base_st['full_name'], depth + 1):
                     abs_off = base_off + f['offset']
-                    if abs_off not in combined:
+                    key = _field_key(f, abs_off)
+                    if key not in combined:
                         field_copy = dict(f, offset=abs_off)
                         if f['name'] == '__vftable' and base_off > 0:
                             field_copy['name'] = '__vftable_' + base_st['name']
-                        combined[abs_off] = field_copy
+                        combined[key] = field_copy
         else:
             for base_ref in st.get('bases', []):
                 base_st = _resolve_base(by_name, base_ref)
                 if not base_st or base_st['size'] <= 1:
                     continue
                 for f in get_flat(base_st['full_name'], depth + 1):
-                    if f['offset'] not in combined:
-                        combined[f['offset']] = f
+                    key = _field_key(f)
+                    if key not in combined:
+                        combined[key] = f
                 break
 
         for f in st['fields']:
-            combined[f['offset']] = f
-        flat = sorted(combined.values(), key=lambda f: f['offset'])
+            combined[_field_key(f)] = f
+        flat = sorted(combined.values(), key=lambda f: (f['offset'], f['type']))
         for i in range(len(flat) - 1):
             end = flat[i]['offset'] + flat[i]['size']
             if end > flat[i + 1]['offset']:
@@ -738,6 +746,17 @@ def _import_types():
             continue
         for field in fields:
             fname, ftype_str, foffset, fsize = field
+            if ftype_str.startswith('bf:'):
+                parts = ftype_str.split(':')
+                bf_bit_offset = int(parts[1])
+                bf_width = int(parts[2])
+                storage_byte = (bf_bit_offset // 32) * 4
+                bit_in_storage = bf_bit_offset % 32
+                try:
+                    s.insertBitFieldAt(storage_byte, 4, bit_in_storage, _U32, bf_width, fname, '')
+                except Exception:
+                    pass
+                continue
             if fsize <= 0 or foffset + fsize > size:
                 continue
             dt_field = resolve_type(ftype_str)
