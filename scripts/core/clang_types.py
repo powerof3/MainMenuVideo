@@ -3,10 +3,18 @@
 Clang subprocess-based C++ type extraction for Ghidra import.
 
 Two-pass approach using clang.exe:
-  Pass 1: -ast-dump (text)                → enums, base classes, virtual methods
-  Pass 2: -fdump-record-layouts-complete   → struct field names, byte offsets, sizes
+  Pass 1: -ast-dump (text)                       → enums, base classes, virtual methods
+  Pass 2: -fdump-record-layouts-complete/canonical → struct fields, byte offsets, sizes
+
+After both passes, results are merged, template instantiations are discovered
+via template_types.py, and layouts are propagated to empty template entries.
 
 Project-agnostic: root namespace and category prefix are configurable.
+
+Public API:
+  collect_types()         - run both passes and return (enums, structs, template_source)
+  find_clang_binary()     - locate clang.exe on Windows (registry, common paths, PATH)
+  _setup_include_paths()  - build clang include args from CommonLib + stub dirs
 """
 
 import os
@@ -960,22 +968,34 @@ def collect_types(header_path, include_path, parse_args,
     """Parse C++ headers via clang.exe and collect type definitions.
 
     Two-pass approach:
-      Pass 1: clang -ast-dump           → enums, base classes, virtual methods
-      Pass 2: clang -fdump-record-layouts-complete → field offsets, sizes, bases
+      Pass 1: clang -ast-dump (text)                       → enums, bases, virtual methods
+      Pass 2: clang -fdump-record-layouts-complete/canonical → field offsets, sizes, bases
+
+    After merging, discovers template instantiation names and propagates
+    layouts from known instantiations to empty ones of the same template base.
 
     Parameters
     ----------
     header_path:
-        Path to the main header file to parse.
+        Path to the main header file to parse (e.g. Skyrim.h).
     include_path:
         Path to the include directory containing the source headers.
         Only types from files under this path are collected.
+    parse_args:
+        Clang command-line arguments (include paths, defines).
+    verbose:
+        Print progress information.
+    clang_binary:
+        Path to clang.exe. Auto-detected via find_clang_binary() if None.
     root_namespace:
         The root C++ namespace to qualify types with (default 'RE').
     category_prefix:
         Ghidra Data Type Manager category prefix (default '/CommonLibSSE').
 
-    Returns (enums, structs, template_source).
+    Returns
+    -------
+    (enums, structs, template_source) where template_source is embeddable
+    Python source for the TEMPLATE_TYPE_MAP dict.
     """
     if not clang_binary:
         clang_binary = find_clang_binary()

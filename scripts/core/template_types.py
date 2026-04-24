@@ -147,7 +147,7 @@ def collect_template_names(
     Parameters
     ----------
     structs:
-        Dict of struct info dicts as produced by ``parse_commonlib_types.py``.
+        Dict of struct info dicts as produced by ``clang_types.collect_types()``.
         Each entry is expected to have:
 
         - ``'fields'``: list of ``{'type': descriptor_str, ...}``
@@ -155,8 +155,8 @@ def collect_template_names(
           ``{'ret': descriptor_str, 'params': [(name, descriptor_str), ...]}``
 
     sig_strings:
-        Optional list of raw C/C++ signature strings (e.g. the ``'sig'``
-        values from the address-symbol table in ``extract_signatures.py``).
+        Optional list of raw C/C++ signature strings (e.g. ``symbol['sig']``
+        values from the relocation symbol table).
 
     Returns
     -------
@@ -231,15 +231,15 @@ def process_template_types(
     structs: dict,
     sig_strings: Optional[List[str]] = None,
 ) -> TemplateResult:
-    """Scan for template instantiation names and build aliases.
+    """Scan for template instantiation names and build the type map.
 
     Parameters
     ----------
     structs:
-        Struct info dict.  Pass ``{}`` when only scanning signature strings.
+        Struct info dict from ``clang_types.collect_types()``.
+        Pass ``{}`` when only scanning signature strings.
     sig_strings:
-        Optional list of raw C++ signature strings to scan (e.g. all
-        ``symbol['sig']`` values from the address-symbol table).
+        Optional list of raw C++ signature strings to scan.
 
     Returns
     -------

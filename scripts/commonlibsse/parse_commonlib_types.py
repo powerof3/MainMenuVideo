@@ -3,13 +3,17 @@
 Parse CommonLibSSE headers and generate Ghidra import scripts that create
 struct/class/enum type definitions with function symbols and relocations.
 
-Run with: python parse_commonlib_types.py [--template-mode MODE]
+Run with: python parse_commonlib_types.py
 
 Pipeline:
-  Types:        clang_types.py via libclang AST + PDB DIA SDK cross-reference
-  Relocations:  reloc_parser.py (regex-based, single-pass SE+AE)
-  PDB symbols:  pdb_symbols.py (extras/SkyrimSE.pdb public function names, fallback)
-  Script gen:   ghidra_import_gen.py (generic Ghidra import script generator)
+  Types:        clang_types.py  (clang.exe AST dump + record layouts)
+  Templates:    template_types.py  (template instantiation name discovery)
+  Relocations:  reloc_parser.py  (regex-based, single-pass SE+AE from raw source)
+  PDB symbols:  pdb_symbols.py  (SkyrimSE.pdb public function names via pdbparse)
+  AE names:     skyrimae.rename  (AE address ID → name mapping, fallback)
+  Script gen:   ghidra_import_gen.py  (Ghidra Jython script emitter)
+
+Generates two scripts: CommonLibImport_SE.py and CommonLibImport_AE.py.
 """
 
 import os

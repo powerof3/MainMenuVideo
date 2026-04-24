@@ -1,15 +1,18 @@
 """Regex-based relocation/symbol scanner for CommonLibSSE.
 
-Parses raw source files with regex to extract:
-  - REL::Relocation<T> VarDecls with RELOCATION_ID(SE, AE) → function symbols
-  - RTTI_* / VTABLE_* labels
-  - Offset:: namespace IDs
-  - Static method detection
+Parses raw C++ source files (headers and .cpp) with regex to extract:
+  - REL::Relocation<T> vars with RELOCATION_ID(SE, AE) → function symbols
+  - REL::Relocation<T> vars with Offset:: references  → function symbols
+  - RTTI_* / VTABLE_* labels from Offsets_RTTI.h / Offsets_VTABLE.h
+  - Offset:: namespace IDs from Offsets.h (handles #ifdef SE/AE sections)
+  - Static method declarations in class bodies
 
-Key advantage: RELOCATION_ID(SE, AE) is parsed before preprocessor expansion,
-giving both SE and AE IDs in a single pass (no two-pass build + merge needed).
+Key advantage over AST-based scanning: RELOCATION_ID(SE, AE) is parsed before
+preprocessor expansion, giving both SE and AE IDs in a single pass.
 
-Root namespace is configurable (default 'RE') for project-agnostic use.
+Public API:
+  collect_relocations()      - scan RE/ headers for all symbol types
+  collect_src_relocations()  - scan src/**/*.cpp for relocation symbols
 """
 from __future__ import annotations
 
@@ -573,10 +576,10 @@ def collect_relocations(
     addr_lib,
     verbose: bool = False,
     root_namespace: str = 'RE',
-) -> Tuple[List[dict], List[dict], Dict[str, int], Set[Tuple[str, str]]]:
+) -> Tuple[List[dict], List[dict], Dict[str, int], Set[Tuple[str, str]], Dict[str, int], Dict[str, int]]:
     """Scan headers for relocation symbols.
 
-    Returns (func_syms, label_syms, offset_id_map, static_methods).
+    Returns (func_syms, label_syms, offset_id_map, static_methods, se_offset_map, ae_offset_map).
     Each func_sym has both se_off and ae_off (from RELOCATION_ID).
     """
     all_func_syms: List[dict] = []

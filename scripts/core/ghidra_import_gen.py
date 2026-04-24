@@ -1,17 +1,25 @@
-"""Generic Ghidra import script generator.
+"""Ghidra import script generator.
 
 Takes processed C++ type data (enums, structs, vtable info) and symbol tables,
 then generates a self-contained Jython script that imports everything into Ghidra's
 Data Type Manager and Symbol Table.
 
+The generated script handles:
+  - Enum, struct, and vtable type creation in Ghidra's DTM
+  - Function symbol labeling and disassembly at known addresses
+  - Signature application via structured pipeline types (FunctionDefinitionDataType)
+    or C prototype parsing (CParserUtils) with type simplification fallback
+  - Virtual function naming by walking VTABLE label addresses
+  - Fallback symbol application (PDB / AE rename) for unnamed functions
+
 This module is game/project-agnostic. All project-specific logic (source parsing,
 address libraries, PDB loading, relocation scanning) lives in the caller.
 
 Public API:
-  build_vtable_structs()          - build vtable descriptors from virtual class hierarchy
-  inject_vtable_fields()          - prepend __vftable pointers to virtual structs
-  flatten_structs()               - expand base class fields into derived structs
-  generate_script()               - emit the Ghidra import script
+  build_vtable_structs()  - build vtable descriptors from virtual class hierarchy
+  inject_vtable_fields()  - prepend __vftable pointers to virtual structs
+  flatten_structs()       - expand base class fields into derived structs
+  generate_script()       - emit the Ghidra import script
 """
 
 from __future__ import annotations
