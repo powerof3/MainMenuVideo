@@ -1043,7 +1043,7 @@ def collect_types(header_path, include_path, parse_args,
     try:
         from template_types import process_template_types as _process_templates
         tmpl = _process_templates(structs)
-        template_source = tmpl.combined_source()
+        template_source = tmpl.map_source
 
         _created = 0
         for _orig, _display in tmpl.template_map.items():

@@ -4,50 +4,12 @@ template_types.py
 Optional pipeline step for handling C++ template instantiation type names in
 the Ghidra import pipeline.
 
-C++ identifiers like ``NiPointer<BSTriShape>`` and
-``BSTArray<NiPointer<CombatInventoryItem>>`` contain angle brackets and cannot
-appear in C function prototype strings that Ghidra's
-``CParserUtils.parseSignature()`` processes.  This module:
+Scans struct field/vtable descriptors and raw signature strings for template
+instantiation names (anything of the form ``Word<...>``), and produces an
+embeddable ``TEMPLATE_TYPE_MAP`` dict for generated Ghidra scripts.
 
-  1. Scans struct field/vtable descriptors and raw signature strings for
-     template instantiation names (anything of the form ``Word<...>``).
-  2. Generates a sanitized C identifier alias for each name, e.g.::
-
-         NiPointer<BSTriShape>                    -> NiPointer_BSTriShape
-         BSTArray<NiPointer<CombatInventoryItem>> -> BSTArray_NiPointer_CombatInventoryItem
-         BSTSmallArray<TESForm *, 6>              -> BSTSmallArray_TESForm_ptr_6
-
-  3. Produces embeddable Python source (``TEMPLATE_TYPE_MAP`` and
-     ``TEMPLATE_C_ALIAS_MAP`` dicts plus a ``_patch_templates`` function) for
-     generated Ghidra scripts, where template names in proto strings are
-     substituted for their sanitized aliases before ``parseSignature``.
-
-At Ghidra runtime the generated script contains::
-
-    TEMPLATE_TYPE_MAP = {'NiPointer<BSTriShape>': 'NiPointer_BSTriShape', ...}
-    TEMPLATE_C_ALIAS_MAP = {'RE::NiPointer<RE::BSTriShape>': 'RE_NiPointer_RE_BSTriShape', ...}
-
-    def _patch_templates(proto):
-        for _tmpl, _alias in sorted(TEMPLATE_C_ALIAS_MAP.items(), key=lambda x: -len(x[0])):
-            proto = proto.replace(_tmpl, _alias)
-        return proto
-
-    ...
-    proto = _patch_templates(proto)
-    func_def = CParserUtils.parseSignature(dtm, program, proto, True)
-
-Notes
------
-- Template instantiation *layout* is not resolved here; all discovered
-  instantiations are treated as opaque structs (unknown size).  Actual field
-  data for fully-instantiated templates (e.g. ``NiPointer<T>`` which is just
-  ``T *``) could be a future enhancement via ccls-re.
-- Only identifiers beginning with an ASCII letter or underscore trigger
-  extraction; numeric non-type parameters (e.g. the ``6`` in
-  ``BSTSmallArray<T, 6>``) appear verbatim in the sanitized name.
-- Namespace prefixes (``RE::``, ``Impl::``, etc.) are stripped from the
-  sanitized name but preserved in ``template_map`` keys so substitution
-  targets the exact string found in source.
+At Ghidra runtime the generated script uses the map to resolve template
+struct references in field type descriptors via ``_resolve_struct_name()``.
 """
 
 from __future__ import annotations
@@ -61,14 +23,6 @@ from typing import Dict, List, Optional, Set
 # Result dataclass
 # ---------------------------------------------------------------------------
 
-def _display_name(orig: str) -> str:
-    """Return the display name for a template instantiation.
-
-    Preserves the full qualified name including ``RE::`` namespace prefix.
-    """
-    return orig
-
-
 @dataclass
 class TemplateResult:
     """
@@ -77,89 +31,15 @@ class TemplateResult:
     Attributes
     ----------
     template_map:
-        Maps the original C++ template instantiation name (as it appears in
-        source/signatures) to a display-friendly name (``RE::`` stripped).
-        Example: ``{'RE::NiPointer<RE::BSTriShape>': 'NiPointer<BSTriShape>'}``
-    c_alias_map:
-        Maps the original C++ template instantiation name to a sanitized
-        C identifier alias for use in ``CParserUtils.parseSignature()`` prototypes.
-        Example: ``{'RE::NiPointer<RE::BSTriShape>': 'RE_NiPointer_RE_BSTriShape'}``
+        Maps the original C++ template instantiation name to itself (identity).
+        Used at Ghidra runtime by ``_resolve_struct_name()`` to look up
+        template struct types in the ``created`` dict.
     map_source:
         Python source text for the ``TEMPLATE_TYPE_MAP`` variable, ready to
         be embedded verbatim in a generated Ghidra script.
-    patch_fn_source:
-        Python source text for the ``_patch_templates(proto)`` helper
-        function, ready to be embedded verbatim in a generated Ghidra script.
     """
     template_map: Dict[str, str] = dc_field(default_factory=dict)
-    c_alias_map: Dict[str, str] = dc_field(default_factory=dict)
     map_source: str = 'TEMPLATE_TYPE_MAP = {}\n'
-    patch_fn_source: str = (
-        'def _patch_templates(proto):\n'
-        '    """Substitute C++ template type names with C-safe aliases before parseSignature."""\n'
-        '    for _tmpl, _alias in sorted(TEMPLATE_TYPE_MAP.items(), key=lambda x: -len(x[0])):\n'
-        '        proto = proto.replace(_tmpl, _alias)\n'
-        '    return proto\n'
-    )
-
-    def combined_source(self) -> str:
-        """Return ``map_source + patch_fn_source`` for single-block embedding."""
-        return self.map_source + '\n' + self.patch_fn_source
-
-
-# ---------------------------------------------------------------------------
-# Name sanitization
-# ---------------------------------------------------------------------------
-
-def sanitize_template_name(name: str) -> str:
-    """Convert a C++ template instantiation name to a valid C identifier.
-
-    Steps:
-
-    1. Convert ``::`` namespace separators to ``_`` (preserves uniqueness for
-       qualified names like ``ActorKill::Event`` -> ``ActorKill_Event``).
-    2. Replace ``<``, ``>``, ``,``, spaces with ``_``.
-    3. Replace ``*`` with ``_ptr``, ``&`` with ``_ref``, ``[]`` with ``_``.
-    4. Collapse runs of ``_`` and strip leading/trailing underscores.
-
-    Examples::
-
-        >>> sanitize_template_name('NiPointer<BSTriShape>')
-        'NiPointer_BSTriShape'
-        >>> sanitize_template_name('BSTArray<NiPointer<CombatInventoryItem>>')
-        'BSTArray_NiPointer_CombatInventoryItem'
-        >>> sanitize_template_name('BSTSmallArray<TESForm *, 6>')
-        'BSTSmallArray_TESForm_ptr_6'
-        >>> sanitize_template_name('BSTEventSource<ActorKill::Event>')
-        'BSTEventSource_ActorKill_Event'
-        >>> sanitize_template_name('RE::BSTHashMap<RE::FormID, RE::TESForm *>')
-        'RE_BSTHashMap_RE_FormID_RE_TESForm_ptr'
-    """
-    buf: List[str] = []
-    i = 0
-    n = len(name)
-    while i < n:
-        if name[i:i+2] == '::':
-            buf.append('_')
-            i += 2
-        elif name[i] in '<>, 	':
-            buf.append('_')
-            i += 1
-        elif name[i] == '*':
-            buf.append('_ptr')
-            i += 1
-        elif name[i] == '&':
-            buf.append('_ref')
-            i += 1
-        elif name[i] in '[]':
-            buf.append('_')
-            i += 1
-        else:
-            buf.append(name[i])
-            i += 1
-    s = ''.join(buf)
-    s = re.sub(r'_+', '_', s).strip('_')
-    return s
 
 
 
@@ -309,8 +189,8 @@ def build_template_result(template_names: Set[str]) -> TemplateResult:
     """Build a :class:`TemplateResult` from a set of template instantiation names.
 
     If *template_names* is empty the returned result is still valid: the
-    Python sources define an empty map and a no-op patch function so the
-    generated Ghidra scripts compile and run without special-casing.
+    Python source defines an empty map so the generated Ghidra scripts
+    compile and run without special-casing.
 
     Parameters
     ----------
@@ -324,68 +204,23 @@ def build_template_result(template_names: Set[str]) -> TemplateResult:
     if not template_names:
         return TemplateResult()
 
-    # template_map: original → display name (RE:: stripped)
-    # c_alias_map: original → sanitized C identifier
     template_map: Dict[str, str] = {}
-    c_alias_map: Dict[str, str] = {}
     for name in sorted(template_names):
-        sanitized = sanitize_template_name(name)
-        display = _display_name(name)
-        if sanitized and display:
-            template_map[name] = display
-            c_alias_map[name] = sanitized
+        template_map[name] = name
 
     if not template_map:
         return TemplateResult()
 
-    # Python source: TEMPLATE_TYPE_MAP (original → display name for field resolution)
     map_lines = ['TEMPLATE_TYPE_MAP = {']
     for orig in sorted(template_map):
         map_lines.append(f'    {orig!r}: {template_map[orig]!r},')
     map_lines.append('}')
     map_source = '\n'.join(map_lines) + '\n'
 
-    # Python source: TEMPLATE_C_ALIAS_MAP (original → sanitized C name for CParserUtils)
-    alias_lines = ['TEMPLATE_C_ALIAS_MAP = {']
-    for orig in sorted(c_alias_map):
-        alias_lines.append(f'    {orig!r}: {c_alias_map[orig]!r},')
-    alias_lines.append('}')
-    map_source += '\n' + '\n'.join(alias_lines) + '\n'
-
-    # Python source: _patch_templates uses C alias map for valid C identifiers
-    patch_fn_source = (
-        'def _patch_templates(proto):\n'
-        '    """Substitute C++ template type names with C-safe aliases before parseSignature."""\n'
-        '    for _tmpl, _alias in sorted(TEMPLATE_C_ALIAS_MAP.items(), key=lambda x: -len(x[0])):\n'
-        '        proto = proto.replace(_tmpl, _alias)\n'
-        '    return proto\n'
-    )
-
     return TemplateResult(
         template_map=template_map,
-        c_alias_map=c_alias_map,
         map_source=map_source,
-        patch_fn_source=patch_fn_source,
     )
-
-
-# ---------------------------------------------------------------------------
-# Signature patching (generation-time utility)
-# ---------------------------------------------------------------------------
-
-def patch_proto_templates(proto: str, template_map: Dict[str, str]) -> str:
-    """Replace template type names in *proto* with their sanitized C aliases.
-
-    Longer names are substituted first so that nested instantiations are
-    handled correctly: ``BSTArray<NiPointer<X>>`` is replaced before
-    ``NiPointer<X>`` to avoid a partial substitution leaving ``BSTArray<…_alias…>``.
-
-    This function is intended for **generation-time** use.  The equivalent
-    logic at **Ghidra runtime** is the embedded ``_patch_templates`` function.
-    """
-    for original, sanitized in sorted(template_map.items(), key=lambda kv: -len(kv[0])):
-        proto = proto.replace(original, sanitized)
-    return proto
 
 
 # ---------------------------------------------------------------------------
@@ -409,10 +244,8 @@ def process_template_types(
     Returns
     -------
     TemplateResult
-        Write ``.map_source`` and ``.patch_fn_source`` verbatim into the
-        generated Ghidra script alongside the other module-level constants.
-        At Ghidra runtime, call ``_patch_templates(proto)`` on each proto
-        string before passing it to ``CParserUtils.parseSignature``.
+        Write ``.map_source`` verbatim into the generated Ghidra script
+        alongside the other module-level constants.
     """
     names  = collect_template_names(structs, sig_strings)
     result = build_template_result(names)

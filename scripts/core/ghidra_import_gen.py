@@ -452,8 +452,6 @@ def convert_sig_to_ghidra(sig, func_name):
     sig = re.sub(r'\\bvirtual\\b', '', sig)
     sig = sig.strip()
 
-    sig = _patch_templates(sig)
-
     candidates = []
     depth = 0
     for i, c in enumerate(sig):
@@ -721,15 +719,6 @@ def _import_types():
         ns = '::'.join(category.strip('/').split('/')[1:])
         if ns:
             created[ns + '::' + name] = dt
-    _display_to_c = {}
-    for _orig, _display in TEMPLATE_TYPE_MAP.items():
-        _c_alias = TEMPLATE_C_ALIAS_MAP.get(_orig, '')
-        if _c_alias and _display != _c_alias:
-            _display_to_c[_display] = _c_alias
-    for _display, _c_alias in _display_to_c.items():
-        dt = created.get(_display)
-        if dt and _c_alias not in created:
-            created[_c_alias] = dt
     print('Created {} struct shells'.format(len(STRUCTS)))
 
     monitor.setMessage('Filling struct fields...')
@@ -1107,7 +1096,7 @@ def generate_script(
     symbols_json, fallback_symbols_json:
         JSON-encoded symbol arrays.
     template_source:
-        Python source for TEMPLATE_TYPE_MAP/TEMPLATE_C_ALIAS_MAP/_patch_templates.
+        Python source for TEMPLATE_TYPE_MAP.
     project_name:
         Human-readable project name for comment strings (default 'CommonLibSSE').
     script_header, script_footer:
@@ -1226,17 +1215,11 @@ def generate_script(
     lines.append('FALLBACK_SYMBOLS = ' + fallback_symbols_json)
     lines.append('')
 
-    # Template type map and patch function
+    # Template type map
     if template_source:
         lines.append(template_source)
     else:
         lines.append('TEMPLATE_TYPE_MAP = {}')
-        lines.append('TEMPLATE_C_ALIAS_MAP = {}')
-        lines.append('')
-        lines.append('def _patch_templates(proto):')
-        lines.append('    for _tmpl, _alias in sorted(TEMPLATE_C_ALIAS_MAP.items(), key=lambda x: -len(x[0])):')
-        lines.append('        proto = proto.replace(_tmpl, _alias)')
-        lines.append('    return proto')
     lines.append('')
 
     lines.append(footer)
