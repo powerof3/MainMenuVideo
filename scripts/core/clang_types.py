@@ -72,13 +72,6 @@ _CLANG_TYPE_MAP = {
     'std::ptrdiff_t': 'i64', 'ptrdiff_t': 'i64',
     'std::uintptr_t': 'u64', 'uintptr_t': 'u64',
     'std::intptr_t': 'i64', 'intptr_t': 'i64',
-    'element_type': 'ptr',
-    'value_type': 'ptr',
-    'key_type': 'ptr',
-    'mapped_type': 'ptr',
-    'first_type': 'ptr',
-    'second_type': 'ptr',
-    'T': 'ptr',
 }
 
 _KW_STRIP_RE = re.compile(r'\b(?:class|struct|union|enum)\s+')
@@ -217,9 +210,7 @@ def _record_type_to_pipeline(raw, root_ns='RE'):
 # Include path and stub generation
 # ---------------------------------------------------------------------------
 
-def _setup_include_paths(commonlib_include, clang_stub_dir=None):
-    if clang_stub_dir is None:
-        clang_stub_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), '_clang_stubs')
+def _setup_include_paths(commonlib_include, clang_stub_dir):
 
     _vcpkg_include = None
     _vcpkg_root = os.environ.get('VCPKG_ROOT', '')
@@ -677,6 +668,7 @@ def _parse_layouts_with_bases(text, root_ns='RE'):
     return results
 
 
+
 def _backfill_sizes(fields, total_size):
     _NATURAL = {
         'bool': 1, 'i8': 1, 'u8': 1,
@@ -913,6 +905,17 @@ def _tmpl_base(name):
     return name[:lt] if lt >= 0 else None
 
 
+def _generalize_field(f):
+    """Copy a field dict, replacing type-specific pointer types with generic ptr."""
+    f = dict(f)
+    t = f['type']
+    if t.startswith('ptr:struct:') or t.startswith('ptr:enum:'):
+        f['type'] = 'ptr'
+    elif t.startswith('struct:') and f['size'] == 8:
+        pass
+    return f
+
+
 def _propagate_template_layouts(structs):
     """Fill empty template placeholders from known instantiations of the same template.
 
@@ -940,7 +943,7 @@ def _propagate_template_layouts(structs):
         donor = has_layout[0][1]
         for key, st in empty:
             st['size'] = donor_size
-            st['fields'] = [dict(f) for f in donor['fields']]
+            st['fields'] = [_generalize_field(f) for f in donor['fields']]
             st['bases'] = list(donor['bases'])
             st['has_vtable'] = donor['has_vtable']
             propagated += 1
@@ -1010,6 +1013,7 @@ def collect_types(header_path, include_path, parse_args,
     cmd_layout = [clang_binary] + parse_args + [
         '-fsyntax-only', '-ferror-limit=0',
         '-Xclang', '-fdump-record-layouts-complete',
+        '-Xclang', '-fdump-record-layouts-canonical',
         header_fwd,
     ]
     result_layout = subprocess.run(cmd_layout, capture_output=True, text=True, encoding='utf-8', errors='replace')
