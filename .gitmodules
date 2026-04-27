@@ -5,3 +5,11 @@
 [submodule "extern/AddressLibraryDatabase"]
 	path = extern/AddressLibraryDatabase
 	url = https://github.com/meh321/AddressLibraryDatabase
+[submodule "extern/CommonLibF4"]
+	path = extern/CommonLibF4
+	url = https://github.com/powerof3/CommonLibF4.git
+	branch = master
+[submodule "extern/CommonLibF4-dev"]
+	path = extern/CommonLibF4-dev
+	url = https://github.com/powerof3/CommonLibF4.git
+	branch = dev-1.10.163
