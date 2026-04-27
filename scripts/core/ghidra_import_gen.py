@@ -750,10 +750,19 @@ def _import_types():
                 parts = ftype_str.split(':')
                 bf_bit_offset = int(parts[1])
                 bf_width = int(parts[2])
-                storage_byte = (bf_bit_offset // 32) * 4
-                bit_in_storage = bf_bit_offset % 32
+                bf_bw = 4
+                bf_base = _U32
+                for _bw, _bd in [(1, _BYTE), (2, _U16), (4, _U32), (8, _U64)]:
+                    _bits = _bw * 8
+                    _sb = (bf_bit_offset // _bits) * _bw
+                    if bf_bit_offset % _bits + bf_width <= _bits and _sb + _bw <= size:
+                        bf_bw = _bw
+                        bf_base = _bd
+                        break
+                storage_byte = (bf_bit_offset // (bf_bw * 8)) * bf_bw
+                bit_in_storage = bf_bit_offset % (bf_bw * 8)
                 try:
-                    s.insertBitFieldAt(storage_byte, 4, bit_in_storage, _U32, bf_width, fname, '')
+                    s.insertBitFieldAt(storage_byte, bf_bw, bit_in_storage, bf_base, bf_width, fname, '')
                 except Exception:
                     pass
                 continue

@@ -340,6 +340,7 @@ def _parse_ast_dump(text, re_include_path, root_ns='RE', category_prefix='/Commo
     cur_enum = None
     cur_enum_depth = 0
     pending_const_name = None
+    last_enum_value = -1
 
     _ENUM_SIZE = {
         'unsigned char': 1, 'signed char': 1, 'char': 1,
@@ -374,6 +375,10 @@ def _parse_ast_dump(text, re_include_path, root_ns='RE', category_prefix='/Commo
         while stack and stack[-1][0] >= depth:
             popped = stack.pop()
             if popped[1] == 'enum' and cur_enum and cur_enum_depth >= depth:
+                if pending_const_name:
+                    last_enum_value += 1
+                    cur_enum['values'].append((pending_const_name, last_enum_value))
+                    pending_const_name = None
                 if cur_enum.get('values') is not None:
                     enums[cur_enum['full_name']] = cur_enum
                 cur_enum = None
@@ -404,7 +409,7 @@ def _parse_ast_dump(text, re_include_path, root_ns='RE', category_prefix='/Commo
                 prefix = _qual_prefix()
                 full_name = prefix + '::' + enum_name if prefix else enum_name
                 stack.append((depth, 'enum', enum_name, in_re))
-                if in_re and enum_name and full_name not in enums:
+                if in_re and enum_name and (full_name not in enums or not enums[full_name]['values']):
                     sz = _ENUM_SIZE.get(underlying, 4)
                     cur_enum = {
                         'name': enum_name,
@@ -414,20 +419,25 @@ def _parse_ast_dump(text, re_include_path, root_ns='RE', category_prefix='/Commo
                         'values': [],
                     }
                     cur_enum_depth = depth
+                    last_enum_value = -1
+                    pending_const_name = None
             continue
 
         # EnumConstantDecl
         if content.startswith('EnumConstantDecl ') and cur_enum:
+            if pending_const_name:
+                last_enum_value += 1
+                cur_enum['values'].append((pending_const_name, last_enum_value))
             m = re.search(r"(\w+)\s+'", content)
-            if m:
-                pending_const_name = m.group(1)
+            pending_const_name = m.group(1) if m else None
             continue
 
         # value: Int N
         if pending_const_name and content.startswith('value: Int'):
             m = re.match(r'value:\s+Int\s+(-?\d+)', content)
             if m and cur_enum:
-                cur_enum['values'].append((pending_const_name, int(m.group(1))))
+                last_enum_value = int(m.group(1))
+                cur_enum['values'].append((pending_const_name, last_enum_value))
             pending_const_name = None
             continue
 
@@ -545,6 +555,9 @@ def _parse_ast_dump(text, re_include_path, root_ns='RE', category_prefix='/Commo
             continue
 
     if cur_enum and cur_enum.get('values') is not None:
+        if pending_const_name:
+            last_enum_value += 1
+            cur_enum['values'].append((pending_const_name, last_enum_value))
         enums[cur_enum['full_name']] = cur_enum
 
     return enums, ast_classes
