@@ -784,7 +784,7 @@ def _import_types():
 
 
 def _import_symbols():
-    version_key = 's' if VERSION == 'se' else 'a'
+    version_key = 's' if VERSION in ('se', 'f4_og') else 'a'
     symbol_table = currentProgram.getSymbolTable()
     base_addr = currentProgram.getImageBase()
     fm = currentProgram.getFunctionManager()
@@ -1050,7 +1050,7 @@ def _import_vtable_names():
 
 def _import_fallback_symbols():
     """Apply fallback symbols only to addresses not yet named."""
-    version_key = 's' if VERSION == 'se' else 'a'
+    version_key = 's' if VERSION in ('se', 'f4_og') else 'a'
     base_addr = currentProgram.getImageBase()
     fm = currentProgram.getFunctionManager()
     symbol_table = currentProgram.getSymbolTable()

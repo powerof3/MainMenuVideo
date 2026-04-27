@@ -1,0 +1,163 @@
+#!/usr/bin/env python3
+"""
+Parse Dear-Modding-FO4/commonlibf4 headers and generate Ghidra import scripts
+for Fallout 4 OG (1.10.163) and NG (1.11.191).
+
+Pipeline:
+  Types:        core/clang_types.py  (clang AST dump + record layouts)
+  Relocations:  reloc_parser.py      (IDs.h map + ID::Class::Method references)
+  Address lib:  address_library.py   (uint64-count + pairs format, both versions)
+  Script gen:   core/ghidra_import_gen.py
+
+Generates:
+  ghidrascripts/CommonLibImport_F4_OG.py
+  ghidrascripts/CommonLibImport_F4_NG.py
+"""
+
+import os
+import sys
+import re
+
+SCRIPT_DIR  = os.path.dirname(os.path.abspath(__file__))
+PROJECT_DIR = os.path.dirname(os.path.dirname(SCRIPT_DIR))
+CORE_DIR    = os.path.join(os.path.dirname(SCRIPT_DIR), 'core')
+
+sys.path.insert(0, CORE_DIR)
+sys.path.insert(0, SCRIPT_DIR)
+
+COMMONLIB_INCLUDE = os.path.join(PROJECT_DIR, 'extern', 'CommonLibF4', 'include')
+FALLOUT_H         = os.path.join(COMMONLIB_INCLUDE, 'RE', 'Fallout.h')
+RE_INCLUDE        = os.path.join(COMMONLIB_INCLUDE, 'RE')
+OUTPUT_DIR        = os.path.join(PROJECT_DIR, 'ghidrascripts')
+ADDRLIB_DIR       = os.path.join(PROJECT_DIR, 'addresslibrary', 'f4')
+
+
+def _enrich_symbols(symbols_list, structs):
+    structs_by_suffix = {}
+    for key, val in structs.items():
+        parts = key.split('::')
+        for i in range(len(parts)):
+            suffix = '::'.join(parts[i:])
+            if suffix not in structs_by_suffix:
+                structs_by_suffix[suffix] = val
+    enriched = 0
+    for sym in symbols_list:
+        if sym['t'] != 'func' or sym.get('sd'):
+            continue
+        name = sym['n']
+        if '::' not in name:
+            continue
+        idx = name.rfind('::')
+        class_name  = name[:idx]
+        method_name = name[idx + 2:]
+        st = structs.get(class_name) or structs_by_suffix.get(class_name)
+        if not st:
+            continue
+        info = st.get('methods', {}).get(method_name)
+        if info:
+            ret, params, is_static = info
+            sym['sd'] = [ret, params, 1 if is_static else 0]
+            enriched += 1
+    if enriched:
+        print(f'Enriched {enriched} symbols with AST method signatures')
+
+
+def main():
+    import json as _json
+
+    from address_library import F4AddressLibrary
+    from ghidra_import_gen import (
+        build_vtable_structs as _build_vtable_structs,
+        inject_vtable_fields as _inject_vtable_fields,
+        flatten_structs       as _flatten_structs,
+        generate_script,
+    )
+
+    # --- Address library ---
+    addr_lib = F4AddressLibrary()
+    addr_lib.load_all(ADDRLIB_DIR)
+    print(f'OG address library: {len(addr_lib.og_db):,} entries')
+    print(f'NG address library: {len(addr_lib.ng_db):,} entries')
+
+    # --- Relocation scan ---
+    print('\n=== Collecting symbols via relocation parser ===')
+    import reloc_parser as _rp
+
+    func_syms, label_syms, static_methods = _rp.collect_relocations(
+        RE_INCLUDE, addr_lib, verbose=True)
+
+    # Mark statics
+    for fs in func_syms:
+        if fs.get('class_') and fs.get('name'):
+            if (fs['class_'], fs['name']) in static_methods:
+                fs['is_static'] = True
+
+    # Build unified symbol list with 's' = OG offset, 'a' = NG offset
+    symbols = []
+    for fs in func_syms:
+        full_name = '{}::{}'.format(fs['class_'], fs['name']) if fs['class_'] else fs['name']
+        sym = {'n': full_name, 't': 'func', 'sig': '', 'src': 'CommonLibF4'}
+        if fs.get('og_off'): sym['s'] = fs['og_off']
+        if fs.get('ng_off'): sym['a'] = fs['ng_off']
+        symbols.append(sym)
+
+    for lbl in label_syms:
+        sym = {'n': lbl['name'], 't': 'label', 'sig': '', 'src': 'CommonLibF4'}
+        if lbl.get('og_off'): sym['s'] = lbl['og_off']
+        if lbl.get('ng_off'): sym['a'] = lbl['ng_off']
+        symbols.append(sym)
+
+    # Normalise __ → ::
+    for s in symbols:
+        if '__' in s['n']:
+            s['n'] = re.sub(r':{3,}', '::', s['n'].replace('__', '::'))
+
+    og_syms = [s for s in symbols if s.get('s')]
+    ng_syms = [s for s in symbols if s.get('a')]
+    print(f'\nTotal symbols: {len(symbols)}  '
+          f'(OG coverage: {len(og_syms)}, NG coverage: {len(ng_syms)})')
+
+    # --- Type parsing ---
+    print('\n=== Parsing types (clang AST) ===')
+    from clang_types import collect_types, _setup_include_paths
+
+    if not os.path.isfile(FALLOUT_H):
+        print('ERROR: Could not find Fallout.h at', FALLOUT_H)
+        sys.exit(1)
+
+    stub_dir   = os.path.join(os.path.dirname(SCRIPT_DIR), 'core', '_clang_stubs')
+    parse_args = _setup_include_paths(COMMONLIB_INCLUDE, stub_dir)
+    # commonlib-shared provides REL/ and REX/ headers
+    shared_include = os.path.join(PROJECT_DIR, 'extern', 'CommonLibF4', 'lib', 'commonlib-shared', 'include')
+    if os.path.isdir(shared_include):
+        parse_args = ['-I' + shared_include] + parse_args
+
+    enums, structs, template_source = collect_types(
+        FALLOUT_H, RE_INCLUDE, parse_args,
+        verbose=True, category_prefix='/CommonLibF4')
+    print(f'Found {len(enums)} enums, {len(structs)} structs/classes')
+
+    _enrich_symbols(symbols, structs)
+
+    vtable_structs = _build_vtable_structs(structs)
+    _inject_vtable_fields(structs, vtable_structs)
+    _flatten_structs(structs)
+
+    # --- Generate OG + NG scripts ---
+    print('\nGenerating Ghidra scripts...')
+    for version, fname in (('f4_og', 'CommonLibImport_F4_OG.py'),
+                           ('f4_ng', 'CommonLibImport_F4_NG.py')):
+        output_path = os.path.join(OUTPUT_DIR, fname)
+        n_enums, n_structs = generate_script(
+            enums, structs, vtable_structs, output_path,
+            version=version,
+            symbols_json=_json.dumps(symbols, separators=(',', ':')),
+            fallback_symbols_json='[]',
+            template_source=template_source,
+            project_name='CommonLibF4',
+        )
+        print(f'  {fname}: {n_enums} enums, {n_structs} structs')
+
+
+if __name__ == '__main__':
+    main()

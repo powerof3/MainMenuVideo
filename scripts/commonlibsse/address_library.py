@@ -56,5 +56,6 @@ class AddressLibrary:
         return db
 
     def load_all(self, base_path: str) -> None:
-        self.se_db = self.load_bin(os.path.join(base_path, 'version-1-5-97-0.bin'))
-        self.ae_db = self.load_bin(os.path.join(base_path, 'versionlib-1-6-1170-0.bin'))
+        sse_dir = os.path.join(base_path, 'sse')
+        self.se_db = self.load_bin(os.path.join(sse_dir, 'version-1-5-97-0.bin'))
+        self.ae_db = self.load_bin(os.path.join(sse_dir, 'versionlib-1-6-1170-0.bin'))

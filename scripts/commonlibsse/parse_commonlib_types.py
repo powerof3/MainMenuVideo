@@ -133,7 +133,7 @@ def run_version(version, symbols_json, fallback_symbols_json='[]'):
 
     cfg = VERSIONS[version]
     output_path = cfg['output']
-    stub_dir = os.path.join(SCRIPT_DIR, '_clang_stubs')
+    stub_dir = os.path.join(os.path.dirname(SCRIPT_DIR), 'core', '_clang_stubs')
     parse_args = _setup_include_paths(COMMONLIB_INCLUDE, stub_dir) + cfg['defines']
 
     print('\n=== {} ==='.format(version.upper()))
