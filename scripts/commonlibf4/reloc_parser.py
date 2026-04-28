@@ -1,11 +1,9 @@
-"""Regex-based relocation/symbol scanner for Dear-Modding-FO4/commonlibf4.
+"""Regex-based relocation/symbol scanner for libxse/commonlibf4.
 
-ID format (IDs.h):
+ID format (IDs.h) -- single AE ID per entry:
   namespace RE::ID {
     namespace Actor {
-      inline constexpr REL::ID AddPerk{ 187096, 2230121 };  // { og_id, ng_id }
-      inline constexpr REL::ID ClearAttackStates{ 2229773 }; // NG-only (no OG)
-      inline constexpr REL::ID HandleDefaultAnimationSwitch{ 0, 2229780 }; // OG missing
+      inline constexpr REL::ID AddPerk{ 2230121 };
     }
   }
 
@@ -13,16 +11,15 @@ Header usage:
   static REL::Relocation<func_t> func{ ID::Actor::AddPerk };
 
 RTTI/NiRTTI (IDs_RTTI.h / IDs_NiRTTI.h):
-  inline constexpr REL::ID Actor{ 4839606 };  // single ID, NG-range
+  inline constexpr REL::ID Actor{ 4839606 };
 
 VTABLE (IDs_VTABLE.h):
   inline constexpr std::array<REL::ID, 17> Actor{ REL::ID(1455516), ... };
-  // REL::ID() constructor — IDs present in BOTH OG and NG databases
 
 Public API:
   collect_relocations(re_include, addr_lib, verbose) ->
       (func_syms, label_syms, static_methods)
-  Each sym has 'og_off' and/or 'ng_off' (None if not available).
+  Each sym has 'ae_off' (AE offset, or None if unresolved).
 """
 from __future__ import annotations
 
@@ -81,13 +78,13 @@ _STATIC_METHOD_RE = re.compile(
 _NS_DECL_BARE_RE = re.compile(r'^\s*namespace\s+([\w:]+)\s*$')  # no brace on same line
 
 
-def _parse_ids_file(file_path: str) -> Dict[str, List[int]]:
-    """Parse IDs.h → {'ClassName::MethodName': [id1, id2, ...]}
+def _parse_ids_file(file_path: str) -> Dict[str, int]:
+    """Parse IDs.h → {'ClassName::MethodName': ae_id}
 
-    id1 = OG (1.10.163), id2 = NG (1.11.191), 0 = missing for that version.
+    Single AE ID per entry (libxse fork). 0 means missing.
     Handles K&R-style opening braces on the line following the namespace keyword.
     """
-    id_map: Dict[str, List[int]] = {}
+    id_map: Dict[str, int] = {}
 
     try:
         with open(file_path, encoding='utf-8', errors='replace') as f:
@@ -122,14 +119,16 @@ def _parse_ids_file(file_path: str) -> Dict[str, List[int]]:
                 scope_stack.append((_pending_sub_ns, brace_depth))
                 _pending_sub_ns = None
 
-        # Detect namespace keywords (brace may or may not be on same line)
-        # Same-line: namespace RE::ID {
+        # Detect namespace keywords (brace may or may not be on same line).
+        # Entry-point is only the qualified form `<X>::ID` (e.g. RE::ID).
+        # An unqualified `namespace ID` may legitimately appear nested inside a
+        # sub-namespace and must NOT be treated as a re-entry.
         for ns_m in _NS_OPEN_RE.finditer(line):
             ns_name = ns_m.group(1)
-            if 'RE::ID' in ns_name or ns_name == 'ID':
+            if ns_name.endswith('::ID') and not in_re_id:
                 in_re_id    = True
                 re_id_depth = brace_depth
-            elif in_re_id and '::' not in ns_name:
+            elif in_re_id:
                 scope_stack.append((ns_name, brace_depth))
 
         # Next-line brace: namespace RE::ID\n{
@@ -137,13 +136,13 @@ def _parse_ids_file(file_path: str) -> Dict[str, List[int]]:
             m = _NS_DECL_BARE_RE.match(line)
             if m:
                 ns_name = m.group(1)
-                if 'RE::ID' in ns_name or ns_name == 'ID':
+                if ns_name.endswith('::ID') and not in_re_id:
                     _pending_re_id = True
-                elif in_re_id and '::' not in ns_name:
+                elif in_re_id:
                     _pending_sub_ns = ns_name
 
         # Parse ID declarations
-        if in_re_id and scope_stack:
+        if in_re_id:
             id_m = _ID_DECL_RE.search(line)
             if id_m:
                 name    = id_m.group(1)
@@ -155,9 +154,12 @@ def _parse_ids_file(file_path: str) -> Dict[str, List[int]]:
                         ids.append(int(tok))
                     except ValueError:
                         pass
-                if ids:
-                    key = '::'.join(s[0] for s in scope_stack) + '::' + name
-                    id_map[key] = ids
+                if ids and ids[0]:
+                    if scope_stack:
+                        key = '::'.join(s[0] for s in scope_stack) + '::' + name
+                    else:
+                        key = name
+                    id_map[key] = ids[0]
 
         brace_depth += opens - closes
 
@@ -252,11 +254,7 @@ def _scan_label_files(
     re_include: str,
     addr_lib,
 ) -> List[dict]:
-    """Scan IDs_RTTI.h, IDs_NiRTTI.h, IDs_VTABLE.h for label symbols.
-
-    RTTI/NiRTTI: single ID, in NG range — og_off=None, ng_off from NG db.
-    VTABLE: REL::ID(n) constructor — IDs present in both dbs, both offsets set.
-    """
+    """Scan IDs_RTTI.h, IDs_NiRTTI.h, IDs_VTABLE.h for label symbols (AE-only)."""
     labels: Dict[str, dict] = {}
 
     # --- RTTI and NiRTTI (single bare ID per entry) ---
@@ -281,14 +279,10 @@ def _scan_label_files(
                     pass
             if not ids:
                 continue
-            the_id  = ids[0]
-            og_off  = addr_lib.get_og(the_id) if the_id else None
-            ng_off  = addr_lib.get_ng(the_id) if the_id else None
-            if og_off or ng_off:
+            ae_off = addr_lib.get_ae(ids[0])
+            if ae_off:
                 lname = prefix + name
-                entry = labels.setdefault(lname, {'name': lname, 'og_off': None, 'ng_off': None})
-                if og_off: entry['og_off'] = og_off
-                if ng_off: entry['ng_off'] = ng_off
+                labels.setdefault(lname, {'name': lname, 'ae_off': ae_off})
 
     # --- VTABLE (std::array<REL::ID, N> using REL::ID() constructor) ---
     vtable_path = os.path.join(re_include, 'IDs_VTABLE.h')
@@ -303,14 +297,10 @@ def _scan_label_files(
             id_calls = [int(x) for x in _REL_ID_CALL_RE.findall(m.group(3))]
             if not id_calls:
                 continue
-            the_id = id_calls[0]
-            og_off = addr_lib.get_og(the_id)
-            ng_off = addr_lib.get_ng(the_id)
-            if og_off or ng_off:
+            ae_off = addr_lib.get_ae(id_calls[0])
+            if ae_off:
                 lname = 'VTABLE_' + name
-                entry = labels.setdefault(lname, {'name': lname, 'og_off': None, 'ng_off': None})
-                if og_off: entry['og_off'] = og_off
-                if ng_off: entry['ng_off'] = ng_off
+                labels.setdefault(lname, {'name': lname, 'ae_off': ae_off})
 
     return list(labels.values())
 
@@ -321,7 +311,7 @@ def _scan_label_files(
 
 def _scan_header(
     file_path: str,
-    id_map: Dict[str, List[int]],
+    id_map: Dict[str, int],
     addr_lib,
     root_namespace: str = 'RE',
 ) -> Tuple[List[dict], Set[Tuple[str, str]]]:
@@ -361,18 +351,12 @@ def _scan_header(
             continue
 
         id_key = ref_m.group(1)  # e.g. 'Actor::AddPerk'
-        ids = id_map.get(id_key)
-        if not ids:
+        ng_id = id_map.get(id_key)
+        if not ng_id:
             continue
 
-        # ids[0] = OG (0 = missing), ids[1] = NG (if present)
-        og_id = ids[0] if len(ids) >= 1 else 0
-        ng_id = ids[1] if len(ids) >= 2 else (ids[0] if len(ids) == 1 and ids[0] > 1_583_368 else 0)
-
-        og_off = addr_lib.get_og(og_id) if og_id else None
-        ng_off = addr_lib.get_ng(ng_id) if ng_id else None
-
-        if not og_off and not ng_off:
+        ae_off = addr_lib.get_ae(ng_id)
+        if not ae_off:
             continue
 
         sym_class = ctx2.full_class
@@ -392,8 +376,7 @@ def _scan_header(
             'class_': sym_class,
             'ret': '', 'params': '',
             'is_static': False,
-            'og_off': og_off,
-            'ng_off': ng_off,
+            'ae_off': ae_off,
         })
 
     return func_syms, static_methods
@@ -412,7 +395,7 @@ def collect_relocations(
     """Scan RE/ headers for relocation symbols.
 
     Returns (func_syms, label_syms, static_methods).
-    Each sym has 'og_off' and 'ng_off' (either may be None).
+    Each sym has 'ae_off' (None if unresolved).
     """
     # 1. Parse centralised ID registry
     ids_h = os.path.join(re_include, 'IDs.h')
@@ -441,21 +424,18 @@ def collect_relocations(
         all_statics |= statics
 
     if verbose:
-        og_found = sum(1 for f in all_func if f['og_off'])
-        ng_found = sum(1 for f in all_func if f['ng_off'])
-        og_only  = sum(1 for f in all_func if f['og_off'] and not f['ng_off'])
-        ng_only  = sum(1 for f in all_func if f['ng_off'] and not f['og_off'])
+        ae_found = sum(1 for f in all_func if f['ae_off'])
         print(f'  Header scan: {len(all_func)} func symbols '
-              f'({og_found} OG, {ng_found} NG, {og_only} OG-only, {ng_only} NG-only), '
-              f'{len(all_statics)} static methods')
+              f'({ae_found} AE), {len(all_statics)} static methods')
 
-    # Dedup by (og_off, ng_off)
-    seen: Set[Tuple] = set()
+    # Dedup by ae_off
+    seen: Set[Optional[int]] = set()
     deduped: List[dict] = []
     for f in all_func:
-        key = (f.get('og_off'), f.get('ng_off'))
-        if key not in seen:
-            seen.add(key)
+        key = f.get('ae_off')
+        if key is None or key not in seen:
+            if key is not None:
+                seen.add(key)
             deduped.append(f)
 
     return deduped, label_syms, all_statics

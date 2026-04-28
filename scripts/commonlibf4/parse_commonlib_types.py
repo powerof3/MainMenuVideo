@@ -1,17 +1,16 @@
 #!/usr/bin/env python3
 """
-Parse Dear-Modding-FO4/commonlibf4 headers and generate Ghidra import scripts
-for Fallout 4 OG (1.10.163) and NG (1.11.191).
+Parse libxse/commonlibf4 headers and generate the Ghidra import script
+for Fallout 4 AE (1.11.191).
 
 Pipeline:
   Types:        core/clang_types.py  (clang AST dump + record layouts)
   Relocations:  reloc_parser.py      (IDs.h map + ID::Class::Method references)
-  Address lib:  address_library.py   (uint64-count + pairs format, both versions)
+  Address lib:  address_library.py   (1-11-191 AE; 1-10-984 NG used to rebase PDB)
   Script gen:   core/ghidra_import_gen.py
 
 Generates:
-  ghidrascripts/CommonLibImport_F4_OG.py
-  ghidrascripts/CommonLibImport_F4_NG.py
+  ghidrascripts/CommonLibImport_F4_AE.py
 """
 
 import os
@@ -76,8 +75,8 @@ def main():
     # --- Address library ---
     addr_lib = F4AddressLibrary()
     addr_lib.load_all(ADDRLIB_DIR)
-    print(f'OG address library: {len(addr_lib.og_db):,} entries')
-    print(f'NG address library: {len(addr_lib.ng_db):,} entries')
+    print(f'AE address library: {len(addr_lib.ae_db):,} entries')
+    print(f'NG address library: {len(addr_lib.ng_db):,} entries (PDB rebase)')
 
     # --- Relocation scan ---
     print('\n=== Collecting symbols via relocation parser ===')
@@ -92,30 +91,26 @@ def main():
             if (fs['class_'], fs['name']) in static_methods:
                 fs['is_static'] = True
 
-    # Build unified symbol list with 's' = OG offset, 'a' = NG offset
+    # Build unified symbol list with 'a' = AE offset
     symbols = []
     for fs in func_syms:
         full_name = '{}::{}'.format(fs['class_'], fs['name']) if fs['class_'] else fs['name']
         sym = {'n': full_name, 't': 'func', 'sig': '', 'src': 'CommonLibF4'}
-        if fs.get('og_off'): sym['s'] = fs['og_off']
-        if fs.get('ng_off'): sym['a'] = fs['ng_off']
+        if fs.get('ae_off'): sym['a'] = fs['ae_off']
         symbols.append(sym)
 
     for lbl in label_syms:
         sym = {'n': lbl['name'], 't': 'label', 'sig': '', 'src': 'CommonLibF4'}
-        if lbl.get('og_off'): sym['s'] = lbl['og_off']
-        if lbl.get('ng_off'): sym['a'] = lbl['ng_off']
+        if lbl.get('ae_off'): sym['a'] = lbl['ae_off']
         symbols.append(sym)
 
-    # Normalise __ → ::
+    # Normalise __ -> ::
     for s in symbols:
         if '__' in s['n']:
             s['n'] = re.sub(r':{3,}', '::', s['n'].replace('__', '::'))
 
-    og_syms = [s for s in symbols if s.get('s')]
-    ng_syms = [s for s in symbols if s.get('a')]
-    print(f'\nTotal symbols: {len(symbols)}  '
-          f'(OG coverage: {len(og_syms)}, NG coverage: {len(ng_syms)})')
+    ae_syms = [s for s in symbols if s.get('a')]
+    print(f'\nTotal symbols: {len(symbols)}  (AE coverage: {len(ae_syms)})')
 
     # --- Type parsing ---
     print('\n=== Parsing types (clang AST) ===')
@@ -143,20 +138,43 @@ def main():
     _inject_vtable_fields(structs, vtable_structs)
     _flatten_structs(structs)
 
-    # --- Generate OG + NG scripts ---
-    print('\nGenerating Ghidra scripts...')
-    for version, fname in (('f4_og', 'CommonLibImport_F4_OG.py'),
-                           ('f4_ng', 'CommonLibImport_F4_NG.py')):
-        output_path = os.path.join(OUTPUT_DIR, fname)
-        n_enums, n_structs = generate_script(
-            enums, structs, vtable_structs, output_path,
-            version=version,
-            symbols_json=_json.dumps(symbols, separators=(',', ':')),
-            fallback_symbols_json='[]',
-            template_source=template_source,
-            project_name='CommonLibF4',
-        )
-        print(f'  {fname}: {n_enums} enums, {n_structs} structs')
+    # --- Fallout4.pdb fallback symbols (rebased NG -> AE) ---
+    print('\n=== Loading Fallout4.pdb fallback symbols (1.10.984 NG -> 1.11.191 AE) ===')
+    from pdb_symbols import load_pdb_names as _load_pdb
+    f4_pdb_path = os.path.join(PROJECT_DIR, 'extras', 'Fallout4.pdb')
+    pdb_names = _load_pdb(f4_pdb_path)
+    print(f'PDB: {len(pdb_names):,} public symbols')
+
+    primary_rvas = {s['a'] for s in symbols if s.get('a')}
+    pdb_fallback = []
+    rebased = 0
+    unmapped = 0
+    for rva_ng, name in pdb_names.items():
+        ae_rva = addr_lib.rva_ng_to_ae(rva_ng)
+        if ae_rva is None:
+            unmapped += 1
+            continue
+        rebased += 1
+        sym = {'n': name, 't': 'func', 'sig': '', 'a': ae_rva, 'src': 'Fallout4.pdb'}
+        pdb_fallback.append(sym)
+    print(f'PDB fallback symbols: {rebased:,} rebased onto AE '
+          f'({unmapped:,} unmapped, '
+          f'{sum(1 for s in pdb_fallback if s["a"] not in primary_rvas):,} not in primary)')
+
+    fallback_json = _json.dumps(pdb_fallback, separators=(',', ':'))
+
+    # --- Generate AE script ---
+    print('\nGenerating Ghidra script...')
+    output_path = os.path.join(OUTPUT_DIR, 'CommonLibImport_F4_AE.py')
+    n_enums, n_structs = generate_script(
+        enums, structs, vtable_structs, output_path,
+        version='f4_ae',
+        symbols_json=_json.dumps(symbols, separators=(',', ':')),
+        fallback_symbols_json=fallback_json,
+        template_source=template_source,
+        project_name='CommonLibF4',
+    )
+    print(f'  CommonLibImport_F4_AE.py: {n_enums} enums, {n_structs} structs')
 
 
 if __name__ == '__main__':

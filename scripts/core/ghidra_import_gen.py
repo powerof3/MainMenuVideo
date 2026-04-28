@@ -784,7 +784,7 @@ def _import_types():
 
 
 def _import_symbols():
-    version_key = 's' if VERSION in ('se', 'f4_og') else 'a'
+    version_key = 's' if VERSION == 'se' else 'a'
     symbol_table = currentProgram.getSymbolTable()
     base_addr = currentProgram.getImageBase()
     fm = currentProgram.getFunctionManager()
@@ -858,8 +858,8 @@ def _import_symbols():
                         comment_parts.append('Source: ' + PROJECT_NAME + ' headers')
                     elif src == 'skyrimae.rename':
                         comment_parts.append('Source: AE rename database (fallback)')
-                    elif src == 'SkyrimSE.pdb':
-                        comment_parts.append('Source: SkyrimSE.pdb public symbols (fallback)')
+                    elif src:
+                        comment_parts.append('Source: ' + src)
                     if comment_parts:
                         cu = currentProgram.getListing().getCodeUnitAt(addr)
                         if cu:
@@ -1050,7 +1050,7 @@ def _import_vtable_names():
 
 def _import_fallback_symbols():
     """Apply fallback symbols only to addresses not yet named."""
-    version_key = 's' if VERSION in ('se', 'f4_og') else 'a'
+    version_key = 's' if VERSION == 'se' else 'a'
     base_addr = currentProgram.getImageBase()
     fm = currentProgram.getFunctionManager()
     symbol_table = currentProgram.getSymbolTable()
@@ -1083,8 +1083,8 @@ def _import_fallback_symbols():
             src = s.get('src', '')
             if src == 'skyrimae.rename':
                 comment = 'Source: AE rename database (fallback)'
-            elif src == 'SkyrimSE.pdb':
-                comment = 'Source: SkyrimSE.pdb public symbols (fallback)'
+            elif src:
+                comment = 'Source: ' + src + ' (fallback)'
             else:
                 comment = ''
             if comment:

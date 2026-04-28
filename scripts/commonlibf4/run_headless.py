@@ -1,25 +1,22 @@
 """
 Headless PyGhidra runner: imports Fallout4.exe into a Ghidra project and
-runs CommonLibImport_F4_OG.py or CommonLibImport_F4_NG.py.
+runs CommonLibImport_F4_AE.py.
 
 Usage:
-  python run_headless.py          # default: OG (1.10.163)
-  python run_headless.py ng       # NG (1.11.191)
+  python run_headless.py
 """
 import sys
 import os
 from pathlib import Path
 
-GAME_VERSION = 'ng' if len(sys.argv) > 1 and sys.argv[1].lower() == 'ng' else 'og'
-
 REPO_DIR     = Path(__file__).parent.parent.parent
 GHIDRA_DIR   = REPO_DIR / "ghidra_12.0.4_PUBLIC"
 BINARY       = REPO_DIR / "Fallout4.exe"
-SCRIPT       = REPO_DIR / "ghidrascripts" / f"CommonLibImport_F4_{GAME_VERSION.upper()}.py"
-PROJECT_DIR  = REPO_DIR / os.environ.get("HEADLESS_PROJECT_DIR", f"ghidra_project_f4_{GAME_VERSION}")
+SCRIPT       = REPO_DIR / "ghidrascripts" / "CommonLibImport_F4_AE.py"
+PROJECT_DIR  = REPO_DIR / os.environ.get("HEADLESS_PROJECT_DIR", "ghidra_project_f4_ae")
 PROJECT_NAME = "Fallout4"
 
-print(f"Game version: {GAME_VERSION.upper()}")
+print("Game version: AE (1.11.191)")
 
 os.environ.setdefault("GHIDRA_INSTALL_DIR", str(GHIDRA_DIR))
 
@@ -84,7 +81,7 @@ with pyghidra.open_project(PROJECT_DIR, PROJECT_NAME, create=True) as project:
         if stderr:
             print("STDERR:", stderr, file=sys.stderr)
 
-        program.save(f"CommonLibF4 {GAME_VERSION.upper()} import", monitor)
+        program.save("CommonLibF4 AE import", monitor)
         print("Saved.")
 
         # --- Verification ---
@@ -150,17 +147,12 @@ with pyghidra.open_project(PROJECT_DIR, PROJECT_NAME, create=True) as project:
                 print(f"  [OK] {lname} @ {syms[0].getAddress()}")
             else:
                 print(f"  [MISSING] {lname}")
-                # RTTI labels are NG-only; don't fail OG for missing RTTI
-                if GAME_VERSION == 'og' and lname.startswith('RTTI_'):
-                    print(f"         (RTTI labels are NG-only -- expected for OG)")
-                else:
-                    spot_ok = False
+                spot_ok = False
 
         print("\n--- Sanity checks ---")
         errors = []
-        min_named = 500 if GAME_VERSION == 'og' else 200
-        if named_funcs < min_named:
-            errors.append(f"Named functions too low: {named_funcs:,} (expected >={min_named})")
+        if named_funcs < 200:
+            errors.append(f"Named functions too low: {named_funcs:,} (expected >=200)")
         if enum_count < 100:
             errors.append(f"Enum count too low: {enum_count} (expected >=100)")
         if struct_count < 500:

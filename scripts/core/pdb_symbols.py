@@ -29,12 +29,27 @@ def undecorate(name: str) -> str:
     return name
 
 
+def _clean_name(name: str) -> str | None:
+    if name.startswith('?'):
+        name = undecorate(name)
+    if re.match(r'^FUN_[0-9A-Fa-f]+$', name):
+        return None
+    name = re.sub(r'_14[0-9A-Fa-f]{6,8}$', '', name)
+    name = re.sub(r':{3,}', '::', name.replace('__', '::'))
+    return name or None
+
+
 # ---------------------------------------------------------------------------
 # PDB public symbols
 # ---------------------------------------------------------------------------
 
 def load_pdb_names(file_path: str) -> Dict[int, str]:
-    """Parse a PDB file and return dict of rva -> name for all public function symbols."""
+    """Parse a PDB file and return dict of rva -> name for all public function symbols.
+
+    Handles two layouts:
+      - gsym.funcs dict (Skyrim-style): keyed by name, values have symtype/segment/offset
+      - gsym.globals list (F4-style): flat list of S_PUB32 records
+    """
     if not os.path.exists(file_path):
         return {}
 
@@ -49,15 +64,28 @@ def load_pdb_names(file_path: str) -> Dict[int, str]:
                 for i in range(len(sec_data) // 40)]
 
     result = {}
-    for name, rec in gsym.funcs.items():
-        if not (rec.symtype & 0x2) or not (1 <= rec.segment <= len(sections)):
-            continue
-        if name.startswith('?'):
-            name = undecorate(name)
-        if re.match(r'^FUN_[0-9A-Fa-f]+$', name):
-            continue
-        name = re.sub(r'_14[0-9A-Fa-f]{6,8}$', '', name)
-        name = re.sub(r':{3,}', '::', name.replace('__', '::'))
-        result[sections[rec.segment - 1] + rec.offset] = name
+
+    if gsym.funcs:
+        # Skyrim-style: dict keyed by name
+        for name, rec in gsym.funcs.items():
+            if not (rec.symtype & 0x2) or not (1 <= rec.segment <= len(sections)):
+                continue
+            name = _clean_name(name)
+            if name is None:
+                continue
+            result[sections[rec.segment - 1] + rec.offset] = name
+    else:
+        # F4-style: flat list of S_PUB32 records; include all code-segment mangled names
+        for rec in gsym.globals:
+            if not (1 <= rec.segment <= len(sections)):
+                continue
+            # Only segment 1 (.text) for executable code
+            if rec.segment != 1:
+                continue
+            name = _clean_name(rec.name)
+            if name is None:
+                continue
+            rva = sections[rec.segment - 1] + rec.offset
+            result[rva] = name
 
     return result
