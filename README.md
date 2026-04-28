@@ -1,263 +1,185 @@
 # Ghidra Import Scripts
 
-Toolchain that reverse-engineers Skyrim SE/AE by importing CommonLibSSE type definitions,
-vtable layouts, and function signatures into Ghidra.
+Generates Ghidra import scripts that apply CommonLib type definitions, vtable
+layouts, function signatures, and address-library-derived symbols to Skyrim SE,
+Skyrim AE, and Fallout 4 AE binaries.
 
-## Table of Contents
+## Supported game versions
 
-1. [Project Layout](#project-layout)
-2. [Prerequisites](#prerequisites)
-3. [Setup](#setup)
-4. [Running the Generator](#running-the-generator)
-5. [Running the Ghidra Scripts](#running-the-ghidra-scripts)
-6. [Pipeline Overview](#pipeline-overview)
-7. [Pipeline Files Reference](#pipeline-files-reference)
-8. [Known Limitations](#known-limitations)
+| Game           | Version label | Address library     | CommonLib repo       |
+|----------------|---------------|---------------------|----------------------|
+| Skyrim SE      | `se`          | `1-5-97-0`          | `powerof3/CommonLibSSE` |
+| Skyrim AE      | `ae`          | `1-6-1170-0`        | `powerof3/CommonLibSSE` |
+| Fallout 4 AE   | `ae`          | `1-11-191-0`        | `libxse/commonlibf4` |
+
+Fallout 4 OG (1.10.163) is **not** supported. The `extras/Fallout4.pdb` is from
+1.10.984 ("NG"); its symbols are rebased onto 1.11.191 (AE) via `RVA → 984 ID →
+191 RVA` lookup.
 
 ---
 
-## Project Layout
+## Project layout
 
 ```
-GhidraImportScripts/
+.
 ├── extern/
-│   ├── CommonLibSSE/           CommonLibSSE submodule (powerof3/dev branch)
-│   └── AddressLibraryDatabase/ Includes AE rename database
+│   ├── CommonLibSSE/                powerof3/CommonLibSSE
+│   ├── CommonLibF4/                 libxse/commonlibf4 (+ commonlib-shared)
+│   └── AddressLibraryDatabase/      meh321 — provides skyrimae.rename
 ├── addresslibrary/
-│   ├── version-1-5-97-0.bin       SE address library
-│   └── versionlib-1-6-1170-0.bin  AE address library
+│   ├── sse/version-1-5-97-0.bin     SE
+│   ├── sse/versionlib-1-6-1170-0.bin AE
+│   └── f4/version-1-11-191-0.bin    F4 AE (primary)
+│       version-1-10-984-0.bin       F4 NG (used to rebase the PDB)
 ├── extras/
-│   └── SkyrimSE.pdb            SE PDB for extra symbol names
-├── ghidrascripts/
-│   ├── CommonLibImport_SE.py   Generated: import SE types + vtables + symbols
-│   └── CommonLibImport_AE.py   Generated: import AE types + vtables + symbols
-├── scripts/
-│   ├── commonlibsse/
-│   │   └── parse_commonlib_types.py  CommonLibSSE-specific orchestrator
-│   └── core/
-│       ├── clang_types.py            Clang AST dump parser (types, enums, methods)
-│       ├── ghidra_import_gen.py      Generic Ghidra import script generator
-│       ├── pdb_symbols.py            PDB parsing and address library loading
-│       └── template_types.py         C++ template instantiation handling
-├── reloc_parser.py             Regex-based relocation/symbol scanner
-└── run_headless.py             Headless PyGhidra runner for verification
+│   ├── SkyrimSE.pdb                 fallback symbol names for Skyrim SE
+│   └── Fallout4.pdb                 fallback symbol names for F4 (NG 1.10.984)
+├── exes/
+│   ├── skyrim/se/SkyrimSE.exe
+│   ├── skyrim/ae/SkyrimSE.exe
+│   └── f4/ae/Fallout4.exe
+├── ghidra/                          Ghidra install (12.x)
+├── ghidraprojects/                  Headless Ghidra projects (auto-created)
+├── ghidrascripts/                   Generated import scripts (output)
+└── scripts/
+    ├── run_headless.py              Unified headless runner
+    ├── core/
+    │   ├── clang_types.py           clang AST + record-layout parser
+    │   ├── ghidra_import_gen.py     Game-agnostic Ghidra script emitter
+    │   ├── pdb_symbols.py           PDB public-symbol extraction
+    │   └── template_types.py        C++ template alias generator
+    ├── commonlibsse/
+    │   ├── parse_commonlib_types.py Generates SE + AE scripts
+    │   ├── reloc_parser.py          RELOCATION_ID(SE,AE) regex scanner
+    │   └── address_library.py       SE + AE binary loader
+    └── commonlibf4/
+        ├── parse_commonlib_types.py Generates F4 AE script
+        ├── reloc_parser.py          libxse single-ID regex scanner
+        └── address_library.py       AE primary; NG inverted for PDB rebase
 ```
 
 ---
 
 ## Prerequisites
 
-### Python (host machine)
+- Python 3.10+ (64-bit). Install deps: `pip install pdbparse pyghidra`
+- LLVM/Clang on `PATH` (used for `-ast-dump` and `-fdump-record-layouts`)
+- Ghidra 12.x extracted into `./ghidra/`
+- Submodules initialized:
 
-- Python **3.10+**, 64-bit
-- Install dependencies:
-
-```bash
-pip install pdbparse pyghidra
 ```
-
-`pdbparse` reads SE PDB public symbols. `pyghidra` is optional, only needed
-for headless verification via `run_headless.py`.
-
-### Clang
-
-[LLVM/Clang](https://releases.llvm.org/) is required for type extraction.
-The pipeline uses `clang -ast-dump` for enums, class hierarchies, and method
-signatures, and `clang -fdump-record-layouts` for struct field offsets and sizes.
-
-The generator auto-detects `clang.exe` from PATH or common install locations.
-
-### CommonLibSSE submodule
-
-The generator reads directly from `extern/CommonLibSSE/`. Ensure the submodule
-is checked out:
-
-```bash
-git submodule update --init extern/CommonLibSSE
+git submodule update --init --recursive
 ```
-
-### Ghidra
-
-- [Ghidra](https://ghidra-sre.org/) 12.x or later
 
 ---
 
-## Setup
+## Generating the import scripts
 
-All paths are relative to the repository root. The generator finds all inputs
-automatically — no environment variables are required.
-
----
-
-## Running the Generator
-
-Run from the repository root:
+Run each pipeline from the repo root. They read directly from `extern/<repo>/`
+and write into `ghidrascripts/`.
 
 ```bash
-python scripts/commonlibsse/parse_commonlib_types.py
+python scripts/commonlibsse/parse_commonlib_types.py   # SE + AE
+python scripts/commonlibf4/parse_commonlib_types.py    # F4 AE
 ```
 
 Outputs:
-- `ghidrascripts/CommonLibImport_SE.py` — SE types, enums, vtables, symbols
-- `ghidrascripts/CommonLibImport_AE.py` — AE types, enums, vtables, symbols
+- `ghidrascripts/CommonLibImport_SE.py`
+- `ghidrascripts/CommonLibImport_AE.py`
+- `ghidrascripts/CommonLibImport_F4_AE.py`
 
-Typical run time: ~2–3 minutes (two clang AST + layout passes + relocation scan).
-
-Console output:
-```
-=== Collecting symbols via regex relocation parser ===
-  Parsed 196 SE + 204 AE offset IDs from Offsets.h
-  Parsed 7327 labels from Offsets_RTTI.h
-  Parsed 7224 labels from Offsets_VTABLE.h
-  Header scan: 178 func symbols, 14551 labels
-  src/ scan: 626 func symbols from 347 cpp files
-Generated 53227 symbols
-
-=== SE ===
-Using clang: G:\LLVM\bin\clang.exe
-Pass 1: AST dump (enums, virtual methods)...
-  Parsed 699 enums, 2805 classes from AST
-Pass 2: Record layouts (field offsets, sizes)...
-  Merged: 16993 structs
-Enriched 780 symbols with AST method signatures
-Built 1351 vtable structs
-Output: ghidrascripts/CommonLibImport_SE.py (699 enums, 17121 structs)
-```
-
-### Regeneration
-
-Regenerate whenever:
-- CommonLibSSE submodule is updated (`git submodule update`)
-- `template_types.py` or the generator is modified
+Re-run whenever a `extern/CommonLib*` submodule is updated, when address
+library `.bin` files change, or when generator code under `scripts/core/` is
+modified.
 
 ---
 
-## Running the Ghidra Scripts
+## Running headless against the binaries
 
-### Import the binary
+Place each binary under `exes/<game>/<version>/`. The runner auto-discovers all
+present targets.
 
-1. Open Ghidra and create a project.
-2. Import `SkyrimSE.exe` (SE) or the AE executable. Use the default PE import
-   options.
-
-### Run CommonLibImport_SE.py or CommonLibImport_AE.py
-
-In the Ghidra Script Manager (`Window > Script Manager`):
-
-1. Add `ghidrascripts/` to the script directories.
-2. Run **`CommonLibImport_SE.py`** for SE binaries or **`CommonLibImport_AE.py`**
-   for AE binaries.
-
-The script:
-- Creates all structs, classes, and enums under `/CommonLibSSE/RE/`.
-- Populates vtable structs with typed function pointer fields.
-- Names virtual functions by walking vtable addresses in the binary.
-- Applies function signatures via `CParserUtils.parseSignature()`.
-- Labels all known symbols at their computed addresses.
-
-Both scripts are safe to re-run; they overwrite existing types and labels.
-
----
-
-## Pipeline Overview
-
-```
-CommonLibSSE headers ─┬─ reloc_parser.py ──► symbols (SE+AE offsets)
-CommonLibSSE src/   ──┤
-Address libraries   ──┘
-
-CommonLibSSE headers ─── clang AST dump ──► enums, class hierarchy, method signatures
-                     ─── clang layouts  ──► struct fields, sizes, offsets
-
-parse_commonlib_types.py ─── merges both ──┐
-ghidra_import_gen.py ─── generates script ─┴─► CommonLibImport_SE.py / AE.py
+```bash
+python scripts/run_headless.py                # all games × versions
+python scripts/run_headless.py skyrim         # all skyrim versions
+python scripts/run_headless.py skyrim ae      # specific
+python scripts/run_headless.py f4 ae
 ```
 
-**Symbol sources** (in priority order):
+For each target the runner:
+1. Opens or creates `ghidraprojects/<game>_<version>/`
+2. Imports the `.exe` if not already present
+3. Runs the matching `CommonLibImport_*.py`
+4. Saves the program
+5. Prints a verification summary (named functions, type spot-checks,
+   game-specific labels/functions)
 
-1. CommonLibSSE headers — regex relocation scan (`RELOCATION_ID`, `REL::Relocation`)
-2. CommonLibSSE `src/*.cpp` — regex scan (functions not in headers)
-3. `skyrimae.rename` — AE address database fallback names
-4. `SkyrimSE.pdb` — SE PDB public symbols (fallback, no signatures)
-
-**Type sources:**
-
-- Clang `-ast-dump` — class definitions, base classes, virtual/non-virtual methods,
-  enums (values, underlying type), constructors, free functions
-- Clang `-fdump-record-layouts` — struct field offsets, sizes, padding
+Exit code is non-zero if any target's spot-checks or sanity thresholds fail.
 
 ---
 
-## Pipeline Files Reference
+## Pipeline overview
 
-### `parse_commonlib_types.py`
+```
+extern/CommonLib*/include/    ─── reloc_parser.py         ──► symbols (game-version offsets)
+addresslibrary/<game>/*.bin   ─── address_library.py      ──┘
 
-CommonLibSSE-specific orchestrator. Coordinates clang for types, reloc_parser
-for symbols, loads address libraries / PDB / AE rename DB, and calls
-`ghidra_import_gen` to emit the Ghidra import scripts.
+extern/CommonLib*/include/    ─── clang -ast-dump         ──► enums, classes, methods, vtables
+                              ─── clang -fdump-record-layouts ─► struct field offsets + sizes
 
-| Input | Purpose |
-|-------|---------|
-| `extern/CommonLibSSE/include/RE/` | Type definitions + relocation IDs |
-| `extern/CommonLibSSE/src/*.cpp` | Additional function relocations |
-| `addresslibrary/` | SE and AE offset databases |
-| `extern/AddressLibraryDatabase/skyrimae.rename` | AE fallback symbol names |
-| `extras/SkyrimSE.pdb` | SE fallback symbol names |
+extras/<game>.pdb             ─── pdb_symbols.py          ──► fallback symbols
+                                                              (Fallout4.pdb is rebased
+                                                               1.10.984 NG → 1.11.191 AE)
 
-### `clang_types.py`
+parse_commonlib_types.py      ─── orchestrates each game ─┐
+ghidra_import_gen.py          ─── emits the .py script ───┴─► ghidrascripts/CommonLibImport_*.py
+```
 
-Clang AST dump and record layout parser. Runs `clang -ast-dump` to extract
-enums, class hierarchies, virtual/non-virtual methods, constructors, and
-namespace free functions. Runs `clang -fdump-record-layouts` for struct field
-offsets and sizes. Merges both into the pipeline struct dict.
+**Symbol sources** (priority order):
 
-### `ghidra_import_gen.py`
+1. `RELOCATION_ID(SE, AE)` (Skyrim) or `REL::ID Name{ng_id}` (F4 libxse) macros
+2. `Offsets_RTTI.h`, `Offsets_NiRTTI.h`, `Offsets_VTABLE.h` labels
+3. `RE::Offset::` namespace IDs (Skyrim)
+4. CommonLibSSE `src/*.cpp` cross-references (Skyrim only)
+5. Fallback: AE rename DB (`skyrimae.rename`) — Skyrim AE only
+6. Fallback: PDB public symbols (`SkyrimSE.pdb`, `Fallout4.pdb`-rebased)
 
-Generic Ghidra import script generator. Game-agnostic — takes processed type
-data (enums, structs, vtable info) and symbol tables, then generates a
-self-contained Jython script for Ghidra. Provides vtable hierarchy building,
-struct inheritance flattening, and the full Ghidra
-runtime code (type creation, symbol application, vtable walking).
-
-### `reloc_parser.py`
-
-Regex-based scanner for CommonLibSSE relocation data. Extracts:
-- `RELOCATION_ID(SE, AE)` — both IDs in a single pass
-- `RTTI_*` / `VTABLE_*` labels from `Offsets_RTTI.h` / `Offsets_VTABLE.h`
-- `RE::Offset::` namespace IDs from `Offsets.h`
-- Function context (class, method name) from `.cpp` source files
-
-### `template_types.py`
-
-Scans for C++ template instantiation names and generates sanitized C identifier
-aliases so Ghidra's `CParserUtils.parseSignature()` can resolve them.
-
-### `run_headless.py`
-
-Headless PyGhidra runner that imports `SkyrimSE.exe`, runs the generated script,
-and prints a verification summary with sanity checks.
+Vtable slots known from the AST upgrade matching fallback symbols' source from
+PDB/rename to the CommonLib name, so they appear under
+`/CommonLibSSE/` or `/CommonLibF4/` in the Data Type Manager.
 
 ---
 
-## Known Limitations
+## Generated script behaviour
 
-### Template instantiation layout
+Each `CommonLibImport_*.py` is a self-contained Jython script that:
 
-Template instantiation layouts come from clang's record layout dump. Template
-instantiations that clang cannot resolve are emitted as opaque placeholder structs.
+- Creates all enums, structs, and vtable structs under `/CommonLib<Game>/`
+- Populates struct fields with computed offsets and types
+- Names virtual functions by walking vtable addresses in the binary
+- Applies function signatures via `CParserUtils.parseSignature()` (with a
+  `void *` fallback for unresolved type names)
+- Labels every known address-library symbol
+- Adds a `Source: <origin>` plate comment to each named function
 
-### Vtable slot computation
+The scripts are idempotent — safe to re-run; they overwrite types/labels.
 
-Slot indices are computed from the clang AST's virtual method declarations.
-Diamond inheritance with shared virtual bases may produce incorrect slot numbers.
-Multi-vtable classes (multiple inheritance) use only the primary vtable (index 0)
-for the vtable walk.
+---
 
-### CParserUtils type resolution
+## Known limitations
 
-Ghidra's `CParserUtils.parseSignature()` resolves type names against the
-Data Type Manager. Types not covered by the DTM are replaced with `void *`
-by the `sanitize_unknown_types()` fallback.
+- **Template layouts.** clang's record-layout dump occasionally fails to
+  instantiate templates; those types ship as opaque placeholder structs.
+- **Vtable slots.** Computed from the clang AST's virtual-method declarations.
+  Diamond inheritance with shared virtual bases may produce incorrect indices,
+  and multi-vtable classes use only the primary vtable for the walk.
+- **Type resolution in signatures.** Ghidra's `CParserUtils.parseSignature()`
+  resolves names against the Data Type Manager; missing names are replaced
+  with `void *`.
+- **Fallout 4 PDB coverage.** The shipped `Fallout4.pdb` only contains ~11.7k
+  real public symbols (the rest are auto-named `FUN_*` placeholders, filtered
+  out). The vast majority of named F4 functions therefore come from the
+  CommonLibF4 ID database, not the PDB.
 
 ---
 
