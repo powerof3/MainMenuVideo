@@ -91,11 +91,10 @@ bool VideoPlayer::LoadAudio(const std::string& path)
 														ComPtr<IMFGetService> service;
 														hr = mediaSink.As(&service);
 														if (SUCCEEDED(hr)) {
-															service->GetService(MR_POLICY_VOLUME_SERVICE, IID_PPV_ARGS(&audioVolume));
+															// MR_POLICY_VOLUME_SERVICE affects game volume too
+															service->GetService(MR_STREAM_VOLUME_SERVICE, IID_PPV_ARGS(&audioVolume));
 														}
-														if (audioVolume) {
-															audioVolume->SetMasterVolume(volume.load(std::memory_order_relaxed));
-														}
+														ApplyVolume(volume.load(std::memory_order_relaxed));
 														return true;
 													}
 												}
@@ -245,6 +244,7 @@ void VideoPlayer::CreateAudioThread()
 
 		startBarrier.arrive_and_wait();
 		audioWriter->BeginWriting();
+		ApplyVolume(volume.load(std::memory_order_relaxed));
 
 		ComPtr<IMFSample> sample;
 		DWORD             streamFlags = 0;
@@ -483,8 +483,24 @@ void VideoPlayer::IncrementVolume(float a_delta)
 {
 	if (audioVolume) {
 		auto tempVolume = std::clamp(volume.load(std::memory_order_relaxed) + a_delta, 0.0f, 1.0f);
-		audioVolume->SetMasterVolume(tempVolume);
-		volume.store(tempVolume, std::memory_order_relaxed);
-		volumeDisplayStart = std::chrono::steady_clock::now();
+		if (ApplyVolume(tempVolume)) {
+			volume.store(tempVolume, std::memory_order_relaxed);
+			volumeDisplayStart = std::chrono::steady_clock::now();
+		}
 	}
+}
+
+bool VideoPlayer::ApplyVolume(float a_volume) const
+{
+	if (!audioVolume) {
+		return false;
+	}
+
+	UINT32 channels = 0;
+	if (FAILED(audioVolume->GetChannelCount(&channels)) || channels == 0) {
+		return false;
+	}
+
+	const std::vector<float> levels(channels, a_volume);
+	return SUCCEEDED(audioVolume->SetAllVolumes(channels, levels.data()));
 }

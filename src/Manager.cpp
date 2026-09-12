@@ -227,7 +227,6 @@ EventResult Manager::ProcessEvent(const RE::MenuOpenCloseEvent* a_evn, RE::BSTEv
 		if (a_evn->opening) {
 			if (firstBoot) {
 				firstBoot = false;
-				auto rng = REX::TRandom<float>();
 				if (rng.Generate(0.0f, 1.0f) > GetPlaybackChance()) {
 					return EventResult::kContinue;
 				}
@@ -253,7 +252,6 @@ EventResult Manager::ProcessEvent(const RE::MenuOpenCloseEvent* a_evn, RE::BSTEv
 				playerDied = false;
 				return EventResult::kContinue;
 			}
-			auto rng = REX::TRandom<float>();
 			if (rng.Generate(0.0f, 1.0f) > GetPlaybackChance()) {
 				return EventResult::kContinue;
 			}

@@ -71,6 +71,8 @@ public:
 	void IncrementVolume(float a_delta);
 
 private:
+	bool ApplyVolume(float a_volume) const;
+
 	using clock = std::chrono::steady_clock;
 	using duration = std::chrono::duration<double>;
 	using time_point = std::chrono::time_point<clock, duration>;
@@ -110,7 +112,7 @@ private:
 	ComPtr<IMFSourceReader>         audioReader{};
 	ComPtr<IMFSinkWriter>           audioWriter{};
 	ComPtr<IMFMediaSink>            mediaSink{};
-	ComPtr<IMFSimpleAudioVolume>    audioVolume{};
+	ComPtr<IMFAudioStreamVolume>    audioVolume{};
 	std::atomic<float>              volume{ 1.0f };
 	time_point                      volumeDisplayStart{};
 	std::jthread                    audioThread;

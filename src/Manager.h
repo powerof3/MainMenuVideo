@@ -80,10 +80,11 @@ private:
 	Key volumeUp{ "iVolumeUpKey"sv, VK_PRIOR };
 	Key volumeDown{ "iVolumeDownKey"sv, VK_NEXT };
 
-	bool        firstBoot{ true };
-	bool        timerRunning{ false };
-	bool        mainMenuClosed{ false };
-	bool        heyYouYoureFinallyAwake{ false };
-	bool        playerDied{ false };
-	REX::FTimer timer;
+	bool                firstBoot{ true };
+	bool                timerRunning{ false };
+	bool                mainMenuClosed{ false };
+	bool                heyYouYoureFinallyAwake{ false };
+	bool                playerDied{ false };
+	REX::FTimer         timer;
+	REX::TRandom<float> rng{};
 };
