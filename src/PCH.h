@@ -85,7 +85,7 @@ namespace stl
 		auto& trampoline = REL::GetTrampoline();
 		trampoline.write_jmp<5>(a_src, T::thunk);
 
-			auto alloc = trampoline.allocate(p.getSize());
+		auto alloc = trampoline.allocate(p.getSize());
 		std::memcpy(alloc, p.getCode(), p.getSize());
 
 		T::func = reinterpret_cast<std::uintptr_t>(alloc);
