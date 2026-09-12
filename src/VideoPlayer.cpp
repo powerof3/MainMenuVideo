@@ -48,7 +48,7 @@ void ImGui::Texture::Update(ID3D11DeviceContext* context, const cv::Mat& mat) co
 // convert video to use MF? later
 bool VideoPlayer::LoadAudio(const std::string& path)
 {
-	HRESULT hr = MFCreateSourceReaderFromURL(stl::utf8_to_utf16(path)->c_str(), nullptr, &audioReader);
+	HRESULT hr = MFCreateSourceReaderFromURL(stl::utf8_to_utf16(path).c_str(), nullptr, &audioReader);
 	if (SUCCEEDED(hr)) {  // Select only the audio stream
 		hr = audioReader->SetStreamSelection((DWORD)MF_SOURCE_READER_ALL_STREAMS, FALSE);
 		if (SUCCEEDED(hr)) {
@@ -196,6 +196,7 @@ void VideoPlayer::CreateVideoThread()
 			}
 
 			readFrameCount.fetch_add(1, std::memory_order_relaxed);
+			frameVersion.fetch_add(1, std::memory_order_release);
 			frameStartTime += frameDuration;
 
 			if (now - debugUpdateInfoTime >= debugUpdateInterval) {
@@ -215,6 +216,11 @@ void VideoPlayer::Update(ID3D11DeviceContext* context)
 		return;
 	}
 
+	const auto version = frameVersion.load(std::memory_order_acquire);
+	if (version == uploadedVersion) {
+		return;
+	}
+
 	cv::Mat localFrame;
 	{
 		ReadLocker lock(videoFrameLock);
@@ -225,6 +231,7 @@ void VideoPlayer::Update(ID3D11DeviceContext* context)
 	}
 
 	texture->Update(context, localFrame);
+	uploadedVersion = version;
 }
 
 void VideoPlayer::CreateAudioThread()
@@ -278,7 +285,7 @@ bool VideoPlayer::LoadVideo(ID3D11Device* device, const std::string& path, bool 
 	cap.open(path, cv::CAP_MSMF, { cv::CAP_PROP_HW_ACCELERATION, cv::VIDEO_ACCELERATION_ANY });
 	if (!cap.isOpened()) {
 		currentVideo.clear();
-		logger::warn("Couldn't load {}", path);
+		REX::WARN("Couldn't load {}", path);
 		return false;
 	}
 
@@ -290,7 +297,7 @@ bool VideoPlayer::LoadVideo(ID3D11Device* device, const std::string& path, bool 
 	targetFPS = static_cast<float>(cap.get(cv::CAP_PROP_FPS));
 	frameDuration = targetFPS > 0.0f ? duration(1.0f / targetFPS) : duration(0.0333);
 
-	logger::info("Loading {} ({}x{}|{} FPS|{} frames)", path, videoWidth, videoHeight, targetFPS, frameCount);
+	REX::INFO("Loading {} ({}x{}|{} FPS|{} frames)", path, videoWidth, videoHeight, targetFPS, frameCount);
 
 	const auto screenSize = RE::BSGraphics::Renderer::GetScreenSize();
 	if (screenSize.width != videoWidth || screenSize.height != videoHeight) {
@@ -300,7 +307,7 @@ bool VideoPlayer::LoadVideo(ID3D11Device* device, const std::string& path, bool 
 
 		auto displayWidth = static_cast<std::uint32_t>(videoWidth * scale);
 		auto displayHeight = static_cast<std::uint32_t>(videoHeight * scale);
-		logger::info("\tScaling to fit screen ({}x{} -> {}x{} ({:.2f}X))", videoWidth, videoHeight, displayWidth, displayHeight, scale);
+		REX::INFO("\tScaling to fit screen ({}x{} -> {}x{} ({:.2f}X))", videoWidth, videoHeight, displayWidth, displayHeight, scale);
 		displaySize = { static_cast<float>(displayWidth), static_cast<float>(displayHeight) };
 	} else {
 		displaySize = { static_cast<float>(videoWidth), static_cast<float>(videoHeight) };

@@ -6,7 +6,7 @@
 #define IMGUI_DEFINE_MATH_OPERATORS
 
 #include "RE/Skyrim.h"
-#include "REX/REX/Singleton.h"
+#include "REX/REX.h"
 #include "SKSE/SKSE.h"
 
 #include <barrier>
@@ -25,11 +25,6 @@
 #include <mftransform.h>
 #include <propvarutil.h>
 
-#include <ClibUtil/RNG.hpp>
-#include <ClibUtil/simpleINI.hpp>
-#include <ClibUtil/string.hpp>
-#include <ClibUtil/timer.hpp>
-
 #include <opencv4/opencv2/opencv.hpp>
 #include <spdlog/sinks/basic_file_sink.h>
 #include <xbyak/xbyak.h>
@@ -40,13 +35,11 @@
 #include <imgui_impl_dx11.h>
 #include <imgui_stdlib.h>
 
-#define DLLEXPORT __declspec(dllexport)
+#include <SimpleIni.h>
+#undef ERROR
 
 using namespace std::literals;
-using namespace clib_util;
-using namespace string::literals;
-
-namespace logger = SKSE::log;
+using namespace REX::STR::literals;
 
 template <class T>
 using ComPtr = Microsoft::WRL::ComPtr<T>;
@@ -55,12 +48,10 @@ using EventResult = RE::BSEventNotifyControl;
 
 namespace stl
 {
-	using namespace SKSE::stl;
-
 	template <class T>
 	void write_thunk_call(std::uintptr_t a_src)
 	{
-		auto& trampoline = SKSE::GetTrampoline();
+		auto& trampoline = REL::GetTrampoline();
 		T::func = trampoline.write_call<5>(a_src, T::thunk);
 	}
 
@@ -91,13 +82,32 @@ namespace stl
 		Patch p(a_src, BYTES);
 		p.ready();
 
-		auto& trampoline = SKSE::GetTrampoline();
-		trampoline.write_branch<5>(a_src, T::thunk);
+		auto& trampoline = REL::GetTrampoline();
+		trampoline.write_jmp<5>(a_src, T::thunk);
 
-		auto alloc = trampoline.allocate(p.getSize());
+			auto alloc = trampoline.allocate(p.getSize());
 		std::memcpy(alloc, p.getCode(), p.getSize());
 
 		T::func = reinterpret_cast<std::uintptr_t>(alloc);
+	}
+
+	inline std::wstring utf8_to_utf16(std::string_view a_str)
+	{
+		std::wstring str16;
+		REX::UTF8_TO_UTF16(a_str, str16);
+		return str16;
+	}
+}
+
+namespace Runtime
+{
+	inline constexpr REL::Version SSE_1_7_99(1, 7, 99, 0);
+	inline constexpr REL::Version MIN_ADDRESS_LIBRARY_V5 = SSE_1_7_99;
+
+	[[nodiscard]] inline bool IsAtLeast1_7_99() noexcept
+	{
+		static bool result = REX::FModule::GetExecutingModule().GetFileVersion() >= Runtime::SSE_1_7_99;
+		return result;
 	}
 }
 

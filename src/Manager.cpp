@@ -4,25 +4,20 @@
 #include "ImGui/Renderer.h"
 #include "ImGui/Util.h"
 
-void Key::LoadKeys(CSimpleIniA& a_ini, std::string_view a_setting, std::string_view a_comment)
-{
-	key = ini::get_value(a_ini, key, "Hotkeys", std::format("{}Key", a_setting).c_str(), a_comment.data());
-}
-
 void Manager::Register()
 {
-	logger::info("Loading settings...");
+	REX::INFO("Loading settings...");
 	LoadSettings();
 
-	logger::info("Getting video list...");
+	REX::INFO("Getting video list...");
 	GetVideoList();
 
 	if (videoPaths.empty()) {
-		logger::info("No videos found in Data\\MainMenuVideo...");
+		REX::INFO("No videos found in Data\\MainMenuVideo...");
 		return;
 	} else {
 		const auto numVideos = videoPaths.size();
-		logger::info("{} videos found in Data\\MainMenuVideo.", numVideos);
+		REX::INFO("{} videos found in Data\\MainMenuVideo.", numVideos);
 
 		if (numVideos == 1 && videoPlayer.GetPlaybackMode() == PLAYBACK_MODE::kPlayNext) {
 			videoPlayer.SetPlaybackMode(PLAYBACK_MODE::kLoop);
@@ -31,7 +26,6 @@ void Manager::Register()
 
 	RE::UI::GetSingleton()->AddEventSink<RE::MenuOpenCloseEvent>(this);
 
-	SKSE::AllocTrampoline(42);
 	ImGui::Renderer::Install();
 	Hooks::Install();
 }
@@ -39,7 +33,7 @@ void Manager::Register()
 void Manager::CompatibilityCheck()
 {
 	heyYouYoureFinallyAwake = GetModuleHandleA("po3_HeyYouYoureFinallyAwake.dll") != nullptr;
-	logger::info("po3_HeyYoureFinallyAwake.dll installed : {}", heyYouYoureFinallyAwake);
+	REX::INFO("po3_HeyYoureFinallyAwake.dll installed : {}", heyYouYoureFinallyAwake);
 
 	if (heyYouYoureFinallyAwake) {
 		if (auto scriptEventHolder = RE::ScriptEventSourceHolder::GetSingleton()) {
@@ -50,31 +44,13 @@ void Manager::CompatibilityCheck()
 
 void Manager::LoadSettings()
 {
-	constexpr auto path = L"Data/SKSE/Plugins/po3_MainMenuVideo.ini";
+	const auto store = REX::FIniSettingStore::GetSingleton();
+	store->Init(path.data(), "");
 
-	CSimpleIniA ini;
-	ini.SetUnicode();
+	store->Load();
+	store->Save();
 
-	ini.LoadFile(path);
-
-	PLAYBACK_MODE mode{ PLAYBACK_MODE::kLoop };
-	ini::get_value(ini, mode, "Settings", "iPlaybackMode", ";0 - Play once, 1 - Play next video, 2 - Loop current video");
-	videoPlayer.SetPlaybackMode(mode);
-
-	ini::get_value(ini, playVideoAudio, "Settings", "bPlayAudio", ";Replace main menu music with the video's audio track");
-	ini::get_value(ini, showDebugInfo, "Settings", "bDebugStats", ";Display video stats including elapsed time and frame rate");
-
-	ini::get_value(ini, chance, "Settings", "fPlaybackChance", ";Percentage chance that a video will play on startup");
-	chance /= 100.0f;
-
-	ini::get_value(ini, volumeStep, "Settings", "fVolumeStep", ";Volume change (0.1 = 10%)");
-
-	stopPlayback.LoadKeys(ini, "iStopPlayback", ";https://learn.microsoft.com/en-us/windows/win32/inputdev/virtual-key-codes (-1 to disable)\n;Stop playback key (default: Backspace)");
-	playNext.LoadKeys(ini, "iPlayNext", ";Next video key (default: Tab)");
-	volumeUp.LoadKeys(ini, "iVolumeUp", ";Volume up key (default: PageUp)");
-	volumeDown.LoadKeys(ini, "iVolumeDown", ";Volume down key (default:PageDown)");
-
-	(void)ini.SaveFile(path);
+	videoPlayer.SetPlaybackMode(static_cast<PLAYBACK_MODE>(playbackMode.GetValue()));
 }
 
 void Manager::Draw()
@@ -154,13 +130,13 @@ void Manager::GetVideoList()
 
 	std::error_code ec;
 	if (!std::filesystem::exists(directory, ec) || ec) {
-		logger::error("Unable to find Data\\MainMenuVideo directory: {}", ec.message());
+		REX::ERROR("Unable to find Data\\MainMenuVideo directory: {}", ec.message());
 		return;
 	}
 
 	std::filesystem::directory_iterator iterator(directory, ec);
 	if (ec) {
-		logger::error("Unable to iterate over Data\\MainMenuVideo directory: {}", ec.message());
+		REX::ERROR("Unable to iterate over Data\\MainMenuVideo directory: {}", ec.message());
 		return;
 	}
 
@@ -209,11 +185,11 @@ void Manager::GetVideoList()
 		if (!entry.is_regular_file(ec) || ec) {
 			continue;
 		}
-		auto ext = clib_util::string::tolower(entry.path().extension().string());
+		auto ext = REX::STR::TO_LOWER(entry.path().extension().string());
 		if (std::ranges::find(videoExtensions, ext) != videoExtensions.end()) {
-			videoPaths.push_back({ entry.path().string() });
+			videoPaths.emplace_back(entry.path().string());
 		} else {
-			logger::warn("Skipping unsupported file: {}", entry.path().string());
+			REX::WARN("Skipping unsupported file: {}", entry.path().string());
 		}
 	}
 
@@ -251,12 +227,12 @@ EventResult Manager::ProcessEvent(const RE::MenuOpenCloseEvent* a_evn, RE::BSTEv
 		if (a_evn->opening) {
 			if (firstBoot) {
 				firstBoot = false;
-				auto rng = clib_util::RNG().generate();
-				if (rng > chance) {
+				auto rng = REX::TRandom<float>();
+				if (rng.Generate(0.0f, 1.0f) > GetPlaybackChance()) {
 					return EventResult::kContinue;
 				}
 				timerRunning = true;
-				timer.start();
+				timer.Start();
 				LoadNextVideo();
 			} else if (mainMenuClosed) {
 				if (videoPlayer.IsPlaying()) {
@@ -267,9 +243,9 @@ EventResult Manager::ProcessEvent(const RE::MenuOpenCloseEvent* a_evn, RE::BSTEv
 	} else if (menuName == RE::MainMenu::MENU_NAME) {
 		mainMenuClosed = !a_evn->opening;
 		if (a_evn->opening && timerRunning) {
-			timer.stop();
+			timer.Stop();
 			timerRunning = false;
-			logger::info("Loading time: {}", timer.duration());
+			REX::INFO("Loading time: {}", timer.GetDurationStringMin());
 		}
 	} else if (menuName == RE::FaderMenu::MENU_NAME) {
 		if (a_evn->opening && RE::Main::GetSingleton()->resetGame) {
@@ -277,8 +253,8 @@ EventResult Manager::ProcessEvent(const RE::MenuOpenCloseEvent* a_evn, RE::BSTEv
 				playerDied = false;
 				return EventResult::kContinue;
 			}
-			auto rng = clib_util::RNG().generate();
-			if (rng > chance) {
+			auto rng = REX::TRandom<float>();
+			if (rng.Generate(0.0f, 1.0f) > GetPlaybackChance()) {
 				return EventResult::kContinue;
 			}
 			LoadNextVideo();  // game -> quit to main menu

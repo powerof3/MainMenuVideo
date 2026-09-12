@@ -101,6 +101,8 @@ private:
 	std::uint32_t                   frameCount{ 0 };
 	duration                        frameDuration{ 0.0 };
 	std::atomic<std::uint32_t>      readFrameCount{ 0 };
+	std::atomic<std::uint64_t>      frameVersion{ 0 };
+	std::uint64_t                   uploadedVersion{ 0 };
 	std::atomic<float>              elapsedTime{ 0.0f };
 	duration                        debugUpdateInterval{ 0.1 };
 	cv::Mat                         videoFrame;
