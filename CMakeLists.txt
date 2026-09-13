@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.20)
 set(NAME "po3_MainMenuVideo" CACHE STRING "")
-set(VERSION 1.3.2 CACHE STRING "")
+set(VERSION 1.4.0 CACHE STRING "")
 set(AE_VERSION 1)
 set(VR_VERSION 1)
 
@@ -65,7 +65,8 @@ message(
 
 if (DEFINED VCPKG_ROOT)
 	set(CMAKE_TOOLCHAIN_FILE "${VCPKG_ROOT}/scripts/buildsystems/vcpkg.cmake" CACHE STRING "")
-	set(VCPKG_TARGET_TRIPLET "x64-windows-static" CACHE STRING "")
+	set(VCPKG_OVERLAY_TRIPLETS "${CMAKE_CURRENT_SOURCE_DIR}/cmake/triplets" CACHE STRING "")
+	set(VCPKG_TARGET_TRIPLET "x64-windows-static-custom" CACHE STRING "")
 else ()
 	message(
 		WARNING
@@ -155,7 +156,7 @@ else ()
 endif()
 
 find_package(imgui CONFIG REQUIRED)
-find_package(OpenCV COMPONENTS core videoio REQUIRED)
+find_package(OpenCV COMPONENTS core imgproc videoio REQUIRED)
 
 # ---- Add source files ----
 

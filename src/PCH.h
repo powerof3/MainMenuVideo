@@ -25,7 +25,9 @@
 #include <mftransform.h>
 #include <propvarutil.h>
 
-#include <opencv4/opencv2/opencv.hpp>
+#include <opencv4/opencv2/core.hpp>
+#include <opencv4/opencv2/imgproc.hpp>
+#include <opencv4/opencv2/videoio.hpp>
 #include <spdlog/sinks/basic_file_sink.h>
 #include <xbyak/xbyak.h>
 
