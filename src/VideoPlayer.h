@@ -16,6 +16,15 @@ namespace ImGui
 	};
 }
 
+enum class SCALING_MODE
+{
+	kFit, 
+	kFill, 
+	kStretch,
+
+	kTotal
+};
+
 enum class PLAYBACK_MODE
 {
 	kPlayOnce,
@@ -67,6 +76,7 @@ public:
 
 	PLAYBACK_MODE GetPlaybackMode() const;
 	void          SetPlaybackMode(PLAYBACK_MODE a_mode);
+	void          SetScalingMode(SCALING_MODE a_mode) { scalingMode = a_mode; }
 
 	void IncrementVolume(float a_delta);
 
@@ -95,6 +105,7 @@ private:
 	cv::VideoCapture                cap;
 	std::unique_ptr<ImGui::Texture> texture;
 	ImVec2                          displaySize{ 0.0f, 0.0f };
+	SCALING_MODE                    scalingMode{ SCALING_MODE::kFit };
 	PLAYBACK_MODE                   playbackMode{ PLAYBACK_MODE::kLoop };
 	std::uint32_t                   videoWidth{ 0 };
 	std::uint32_t                   videoHeight{ 0 };

@@ -51,6 +51,7 @@ void Manager::LoadSettings()
 	store->Save();
 
 	videoPlayer.SetPlaybackMode(static_cast<PLAYBACK_MODE>(playbackMode.GetValue()));
+	videoPlayer.SetScalingMode(static_cast<SCALING_MODE>(scalingMode.GetValue()));
 }
 
 void Manager::Draw()
@@ -179,6 +180,7 @@ void Manager::GetVideoList()
 		".vob"sv,
 		".webm"sv,
 		".yuv"sv,
+		".ts"sv
 	};
 
 	for (auto& entry : iterator) {

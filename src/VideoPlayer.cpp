@@ -300,7 +300,17 @@ bool VideoPlayer::LoadVideo(ID3D11Device* device, const std::string& path, bool 
 	REX::INFO("Loading {} ({}x{}|{} FPS|{} frames)", path, videoWidth, videoHeight, targetFPS, frameCount);
 
 	const auto screenSize = RE::BSGraphics::Renderer::GetScreenSize();
-	if (screenSize.width != videoWidth || screenSize.height != videoHeight) {
+	if (scalingMode == SCALING_MODE::kStretch) {
+		REX::INFO("\tStretching to screen ({}x{} -> {}x{})", videoWidth, videoHeight, screenSize.width, screenSize.height);
+		displaySize = { static_cast<float>(screenSize.width), static_cast<float>(screenSize.height) };
+	} else if (scalingMode == SCALING_MODE::kFill) {
+		const float scaleX = static_cast<float>(screenSize.width) / videoWidth;
+		const float scaleY = static_cast<float>(screenSize.height) / videoHeight;
+		const float scale = std::max(scaleX, scaleY);
+
+		displaySize = { videoWidth * scale, videoHeight * scale };
+		REX::INFO("\tScaling to fill screen ({}x{} -> {}x{} ({:.2f}X), cropped to {}x{})", videoWidth, videoHeight, displaySize.x, displaySize.y, scale, screenSize.width, screenSize.height);
+	} else if (screenSize.width != videoWidth || screenSize.height != videoHeight) {
 		const float scaleX = static_cast<float>(screenSize.width) / videoWidth;
 		const float scaleY = static_cast<float>(screenSize.height) / videoHeight;
 		const float scale = std::min(scaleX, scaleY);
@@ -432,7 +442,7 @@ bool VideoPlayer::IsPlayingAudio() const
 
 void VideoPlayer::ShowDebugInfo()
 {
-	auto min = ImGui::GetItemRectMin();
+	const auto min = ImMax(ImGui::GetItemRectMin(), ImVec2(0.0f, 0.0f));
 	ImGui::SetCursorScreenPos(min);
 
 	if (IsTransitioning()) {
@@ -452,7 +462,7 @@ void VideoPlayer::OnVolumeUpdate()
 {
 	const auto elapsed = std::chrono::steady_clock::now() - volumeDisplayStart;
 	if (elapsed < volumeDisplayDuration) {
-		auto min = ImGui::GetItemRectMin();
+		const auto min = ImMax(ImGui::GetItemRectMin(), ImVec2(0.0f, 0.0f));  // image may overflow the screen in fill mode
 		ImGui::SetCursorScreenPos(min);
 
 		const float t = float(elapsed / volumeDisplayDuration);

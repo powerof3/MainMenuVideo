@@ -70,6 +70,7 @@ private:
 	std::uint32_t                      selectedIndex{ 0 };
 
 	REX::TIniSetting<std::uint32_t> playbackMode{ "Settings", "iPlaybackMode", std::to_underlying(PLAYBACK_MODE::kLoop) };
+	REX::TIniSetting<std::uint32_t> scalingMode{ "Settings", "iScalingMode", std::to_underlying(SCALING_MODE::kFit) };
 	REX::TIniSetting<bool>          playVideoAudio{ "Settings", "bPlayAudio", true };
 	REX::TIniSetting<bool>          showDebugInfo{ "Settings", "bDebugStats", false };
 	REX::TIniSetting<float>         chance{ "Settings", "fPlaybackChance", 100.0f };
