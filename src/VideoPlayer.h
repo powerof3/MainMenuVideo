@@ -18,8 +18,8 @@ namespace ImGui
 
 enum class SCALING_MODE
 {
-	kFit, 
-	kFill, 
+	kFit,
+	kFill,
 	kStretch,
 
 	kTotal
